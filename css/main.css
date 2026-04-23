@@ -1,0 +1,41 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #0e0e12;
+  color: #fff;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+}
+.controls {
+  padding: 12px;
+  display: flex;
+  gap: 8px;
+}
+.controls button {
+  padding: 6px 14px;
+  background: #1b1b22;
+  color: #fff;
+  border: 1px solid #2d2d38;
+  cursor: pointer;
+  font: inherit;
+}
+.controls button:hover { background: #2a2a34; }
+.stage {
+  position: relative;
+  width: min(1280px, 100vw - 24px);
+  aspect-ratio: 16 / 9;
+  margin: 0 12px;
+  background: #000;
+}
+#webcam {
+  display: none;
+}
+#overlay, #scene3d {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+#scene3d {
+  pointer-events: none;
+}

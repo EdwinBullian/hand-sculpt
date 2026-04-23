@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>hand-sculpt</title>
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+  <div class="controls">
+    <button id="start">Start Camera</button>
+    <button id="stop">Stop</button>
+    <button id="reset">Reset</button>
+  </div>
+  <div class="stage">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <canvas id="scene3d"></canvas>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

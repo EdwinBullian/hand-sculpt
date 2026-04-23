@@ -1,0 +1,11 @@
+{
+  "name": "hand-sculpt",
+  "version": "0.1.0",
+  "description": "Browser hand-tracking 3D sculpting playground",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/",
+    "serve": "python -m http.server 8000"
+  }
+}
