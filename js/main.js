@@ -5,6 +5,9 @@ import { Scene } from './scene.js';
 import { countExtendedFingers } from './fingers.js';
 import { SingleHandPose } from './gestures/singleHandPose.js';
 import { PoseSmoother } from './poseSmoother.js';
+import { TwoHandPinchScale } from './gestures/twoHandPinchScale.js';
+import { FlatPalmSquish } from './gestures/flatPalmSquish.js';
+import { FingerCountHold } from './gestures/fingerCountHold.js';
 
 const videoEl = document.getElementById('webcam');
 const overlayCanvas = document.getElementById('overlay');
@@ -16,6 +19,11 @@ const overlay = new Overlay(overlayCanvas);
 const scene = new Scene(sceneCanvas);
 const singleHandPose = new SingleHandPose();
 const smoother = new PoseSmoother(0.4);
+const pinchScale = new TwoHandPinchScale();
+const squish = new FlatPalmSquish();
+const fingerHold = new FingerCountHold(30);
+
+const SHAPES_BY_COUNT = [null, 'sphere', 'cube', 'pyramid', 'cylinder', 'torus'];
 
 let running = false;
 
@@ -32,6 +40,12 @@ function landmarksByHand(results, want) {
     if (label === want) out.push(results.landmarks[i]);
   }
   return out;
+}
+
+function currentMeshScale() {
+  if (!scene.mesh) return { x: 1, y: 1, z: 1 };
+  const s = scene.mesh.scale;
+  return { x: s.x, y: s.y, z: s.z };
 }
 
 function tick() {
@@ -51,14 +65,42 @@ function tick() {
 
   const pose = singleHandPose.detect(results);
   let gestureLabel;
+
   if (pose.paused) {
     gestureLabel = 'PAUSED';
-  } else if (pose.active) {
-    gestureLabel = 'FORCE';
-    const smoothed = smoother.update(pose.position, pose.quaternion);
-    scene.setPose(smoothed);
+    pinchScale.reset();
+    squish.reset();
   } else {
-    gestureLabel = 'IDLE';
+    const scaleNow = currentMeshScale();
+    const ps = pinchScale.detect(results, scaleNow);
+    if (ps.active) {
+      gestureLabel = 'PINCH-SCALE';
+      scene.setScale(ps.scale);
+      squish.reset();
+    } else {
+      const sq = squish.detect(results, scaleNow);
+      if (sq.active) {
+        gestureLabel = 'SQUISH-' + sq.axis.toUpperCase();
+        scene.setScale(sq.scale);
+      } else if (pose.active) {
+        gestureLabel = 'FORCE';
+        const smoothed = smoother.update(pose.position, pose.quaternion);
+        scene.setPose(smoothed);
+      } else {
+        gestureLabel = 'IDLE';
+      }
+    }
+
+    const swap = fingerHold.detect(results);
+    if (swap.fired !== null) {
+      const shapeName = SHAPES_BY_COUNT[swap.fired];
+      if (shapeName) {
+        scene.setShape(shapeName);
+        smoother.reset();
+        pinchScale.reset();
+        squish.reset();
+      }
+    }
   }
 
   overlay.drawHUD({
@@ -95,6 +137,8 @@ function stop() {
 
 function reset() {
   smoother.reset();
+  pinchScale.reset();
+  squish.reset();
   scene.reset();
 }
 
