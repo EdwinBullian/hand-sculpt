@@ -3,6 +3,8 @@ import { Tracker } from './tracker.js';
 import { Overlay } from './overlay.js';
 import { Scene } from './scene.js';
 import { countExtendedFingers } from './fingers.js';
+import { SingleHandPose } from './gestures/singleHandPose.js';
+import { PoseSmoother } from './poseSmoother.js';
 
 const videoEl = document.getElementById('webcam');
 const overlayCanvas = document.getElementById('overlay');
@@ -12,19 +14,17 @@ const camera = new Camera(videoEl);
 const tracker = new Tracker();
 const overlay = new Overlay(overlayCanvas);
 const scene = new Scene(sceneCanvas);
+const singleHandPose = new SingleHandPose();
+const smoother = new PoseSmoother(0.4);
 
 let running = false;
 
-// Resize both canvases to match their CSS box.
 function syncCanvasSizes() {
   const rect = overlayCanvas.getBoundingClientRect();
   overlay.resize(rect.width, rect.height);
   scene.resize();
 }
 
-// MediaPipe tags each detected hand with "Left" or "Right" (as the model sees
-// the user's hands from the camera's viewpoint). We trust those labels for
-// counting; left/right swap in the mirrored view is a UX concern for Phase 2+.
 function landmarksByHand(results, want) {
   const out = [];
   for (let i = 0; i < results.handedness.length; i++) {
@@ -49,11 +49,23 @@ function tick() {
   const rightFingers = rightHands.reduce((n, lm) => n + countExtendedFingers(lm), 0);
   const totalFingers = leftFingers + rightFingers;
 
+  const pose = singleHandPose.detect(results);
+  let gestureLabel;
+  if (pose.paused) {
+    gestureLabel = 'PAUSED';
+  } else if (pose.active) {
+    gestureLabel = 'FORCE';
+    const smoothed = smoother.update(pose.position, pose.quaternion);
+    scene.setPose(smoothed);
+  } else {
+    gestureLabel = 'IDLE';
+  }
+
   overlay.drawHUD({
     leftFingers,
     rightFingers,
     totalFingers,
-    gesture: 'IDLE',
+    gesture: gestureLabel,
     shape: scene.currentShapeName,
   });
 
@@ -82,6 +94,7 @@ function stop() {
 }
 
 function reset() {
+  smoother.reset();
   scene.reset();
 }
 
@@ -90,6 +103,5 @@ document.getElementById('stop').addEventListener('click', stop);
 document.getElementById('reset').addEventListener('click', reset);
 window.addEventListener('resize', syncCanvasSizes);
 
-// Initial sizing so the cube is visible even before the camera starts.
 syncCanvasSizes();
 scene.render();
