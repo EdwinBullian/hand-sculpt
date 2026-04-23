@@ -42,6 +42,12 @@ export class Scene {
     if (q) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
   }
 
+  // Apply a scale { x, y, z } (non-uniform allowed) to the mesh.
+  setScale(scale) {
+    if (!this.mesh || !scale) return;
+    this.mesh.scale.set(scale.x, scale.y, scale.z);
+  }
+
   // Restore current shape to identity transform (used by Reset button).
   reset() {
     if (!this.mesh) return;
