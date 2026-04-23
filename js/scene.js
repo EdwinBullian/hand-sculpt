@@ -33,6 +33,15 @@ export class Scene {
     this.currentShapeName = name;
   }
 
+  // Apply a pose { position: {x,y,z}, quaternion: {x,y,z,w} } to the mesh.
+  setPose(pose) {
+    if (!this.mesh || !pose) return;
+    const p = pose.position;
+    const q = pose.quaternion;
+    if (p) this.mesh.position.set(p.x, p.y, p.z);
+    if (q) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
+  }
+
   // Restore current shape to identity transform (used by Reset button).
   reset() {
     if (!this.mesh) return;
