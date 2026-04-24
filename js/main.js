@@ -7,6 +7,7 @@ import { SingleHandPose } from './gestures/singleHandPose.js';
 import { PoseSmoother } from './poseSmoother.js';
 import { TwoHandPinchScale } from './gestures/twoHandPinchScale.js';
 import { FlatPalmSquish } from './gestures/flatPalmSquish.js';
+import { FourFingerPinchStretch } from './gestures/fourFingerPinchStretch.js';
 import { FingerCountHold } from './gestures/fingerCountHold.js';
 import { BothBacksReset } from './gestures/bothBacksReset.js';
 import { SnapFreeze } from './gestures/snapFreeze.js';
@@ -23,9 +24,10 @@ const singleHandPose = new SingleHandPose();
 const smoother = new PoseSmoother(1.0);
 const pinchScale = new TwoHandPinchScale();
 const squish = new FlatPalmSquish();
-const fingerHold = new FingerCountHold(30);
+const stretch = new FourFingerPinchStretch();
+const fingerHold = new FingerCountHold(45, 0.04);
 const bothBacks = new BothBacksReset();
-const snapFreeze = new SnapFreeze(5);
+const snapFreeze = new SnapFreeze();
 
 const SHAPES_BY_COUNT = [null, 'sphere', 'cube', 'pyramid', 'cylinder', 'torus'];
 
@@ -57,6 +59,7 @@ function resetAll() {
   smoother.reset();
   pinchScale.reset();
   squish.reset();
+  stretch.reset();
   scene.reset();
 }
 
@@ -88,26 +91,36 @@ function tick() {
   } else {
     const scaleNow = currentMeshScale();
     // Scale gestures run whether frozen or not — freeze only blocks Force.
-    const ps = pinchScale.detect(results, scaleNow);
-    if (ps.active) {
-      gestureLabel = frozen ? 'FROZEN+PINCH-SCALE' : 'PINCH-SCALE';
-      scene.setScale(ps.scale);
+    // Priority order: stretch (all-4-to-thumb) > pinch-scale (thumb+index) > squish (flat palms).
+    // Stretch checks first so it "wins" over pinch-scale when the user clusters all 4 fingers to thumb.
+    const st = stretch.detect(results, scaleNow);
+    if (st.active) {
+      gestureLabel = (frozen ? 'FROZEN+STRETCH-' : 'STRETCH-') + st.axis.toUpperCase();
+      scene.setScale(st.scale);
+      pinchScale.reset();
       squish.reset();
     } else {
-      const sq = squish.detect(results, scaleNow);
-      if (sq.active) {
-        gestureLabel = (frozen ? 'FROZEN+SQUISH-' : 'SQUISH-') + sq.axis.toUpperCase();
-        scene.setScale(sq.scale);
-      } else if (frozen) {
-        gestureLabel = 'FROZEN';
+      const ps = pinchScale.detect(results, scaleNow);
+      if (ps.active) {
+        gestureLabel = frozen ? 'FROZEN+PINCH-SCALE' : 'PINCH-SCALE';
+        scene.setScale(ps.scale);
+        squish.reset();
       } else {
-        const pose = singleHandPose.detect(results);
-        if (pose.active) {
-          gestureLabel = pose.handCount === 2 ? 'FORCE-2' : 'FORCE-1';
-          const smoothed = smoother.update(pose.position, pose.quaternion);
-          scene.setPose(smoothed);
+        const sq = squish.detect(results, scaleNow);
+        if (sq.active) {
+          gestureLabel = (frozen ? 'FROZEN+SQUISH-' : 'SQUISH-') + sq.axis.toUpperCase();
+          scene.setScale(sq.scale);
+        } else if (frozen) {
+          gestureLabel = 'FROZEN';
         } else {
-          gestureLabel = 'IDLE';
+          const pose = singleHandPose.detect(results);
+          if (pose.active) {
+            gestureLabel = pose.handCount === 2 ? 'FORCE-2' : 'FORCE-1';
+            const smoothed = smoother.update(pose.position, pose.quaternion);
+            scene.setPose(smoothed);
+          } else {
+            gestureLabel = 'IDLE';
+          }
         }
       }
     }

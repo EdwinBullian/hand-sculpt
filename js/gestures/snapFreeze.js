@@ -32,7 +32,7 @@ function isSnapPose(lm, touchThreshold, separationThreshold) {
 }
 
 export class SnapFreeze {
-  constructor(holdFrames = 5, touchThreshold = 0.05, separationThreshold = 0.08) {
+  constructor(holdFrames = 3, touchThreshold = 0.08, separationThreshold = 0.04) {
     this.holdFrames = holdFrames;
     this.touchThreshold = touchThreshold;
     this.separationThreshold = separationThreshold;
