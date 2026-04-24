@@ -19,8 +19,8 @@ function applyVertexGradient(geom) {
   const range = maxY - minY || 1;
   for (let i = 0; i < pos.count; i++) {
     const t = (pos.getY(i) - minY) / range;
-    // 0.35 (mid-gray) at the bottom → 1.0 (white) at the top.
-    const c = 0.35 + t * 0.65;
+    // 0.15 (dark gray) at the bottom → 0.95 (near white) at the top.
+    const c = 0.15 + t * 0.8;
     colors[i * 3]     = c;
     colors[i * 3 + 1] = c;
     colors[i * 3 + 2] = c;
