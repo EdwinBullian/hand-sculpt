@@ -13,6 +13,7 @@ import { BothBacksReset } from './gestures/bothBacksReset.js';
 import { SnapFreeze } from './gestures/snapFreeze.js';
 import { VertexSculpt } from './gestures/vertexSculpt.js';
 import { RotationAccumulator } from './rotationAccumulator.js';
+import { nextMirrorAxis } from './mirror.js';
 
 const videoEl = document.getElementById('webcam');
 const overlayCanvas = document.getElementById('overlay');
@@ -39,6 +40,8 @@ let running = false;
 let frozen = false;
 let lastFrameTime = 0;
 let fpsEMA = 0;
+let mirrorAxis = null;  // null | 'x' | 'y' | 'z' — cycled by the M key
+let brushMode = 'drag'; // 'drag' | 'smooth' — cycled by the B key
 
 function syncCanvasSizes() {
   const rect = overlayCanvas.getBoundingClientRect();
@@ -190,6 +193,9 @@ function tick() {
     shape: scene.currentShapeName,
     fps: Math.round(fpsEMA),
     undoDepth: scene.sculptUndoDepth,
+    mirror: mirrorAxis,
+    brush: brushMode,
+    palette: scene.paletteName,
   });
 
   scene.render();
@@ -226,12 +232,66 @@ document.getElementById('stop').addEventListener('click', stop);
 document.getElementById('reset').addEventListener('click', reset);
 window.addEventListener('resize', syncCanvasSizes);
 
-// Z → undo last sculpt (pops the snapshot stack on the scene).
+// ---------- Settings panel ----------
+// Each slider writes directly into the module or scene field that drives the
+// behavior — no intermediate state. Backtick toggles the panel's visibility.
+const settingsPanel = document.getElementById('settings');
+function wireSlider(inputId, outputId, onChange) {
+  const input = document.getElementById(inputId);
+  const out = document.getElementById(outputId);
+  const apply = () => {
+    const v = parseFloat(input.value);
+    out.textContent = v.toFixed(2);
+    onChange(v);
+  };
+  input.addEventListener('input', apply);
+  apply(); // seed the label so it matches the slider's starting value
+}
+wireSlider('s-alpha',   'v-alpha',   (v) => { smoother.alpha = v; });
+wireSlider('s-pick',    'v-pick',    (v) => { scene.sculptPickRadius = v; });
+wireSlider('s-falloff', 'v-falloff', (v) => { scene.sculptFalloffRadius = v; });
+wireSlider('s-sn',      'v-sn',      (v) => { scene.smoothNeighborRadius = v; });
+wireSlider('s-ss',      'v-ss',      (v) => { scene.smoothStrength = v; });
+
+document.getElementById('s-reset').addEventListener('click', () => {
+  const defaults = {
+    's-alpha': 0.85, 's-pick': 0.50, 's-falloff': 0.80, 's-sn': 0.25, 's-ss': 0.15,
+  };
+  for (const [id, value] of Object.entries(defaults)) {
+    const el = document.getElementById(id);
+    el.value = String(value);
+    el.dispatchEvent(new Event('input'));
+  }
+});
+
+// Keyboard shortcuts:
+//   Z → undo last sculpt (pops the snapshot stack on the scene)
+//   M → cycle mirror axis for sculpt: off → x → y → z → off
+//   B → toggle brush tool: drag ↔ smooth
+//   C → cycle color palette
+//   ` → toggle the settings panel
 window.addEventListener('keydown', (e) => {
+  // Swallow the shortcut if the user is typing into a form field (e.g. the
+  // range inputs — arrow keys also fire keydown there).
+  if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
   if (e.key === 'z' || e.key === 'Z') {
     if (scene.undoSculpt()) {
       console.log('Sculpt undone. Remaining stack:', scene.sculptUndoDepth);
     }
+  } else if (e.key === 'm' || e.key === 'M') {
+    mirrorAxis = nextMirrorAxis(mirrorAxis);
+    scene.setMirrorAxis(mirrorAxis);
+    console.log('Mirror axis:', mirrorAxis ?? 'off');
+  } else if (e.key === 'b' || e.key === 'B') {
+    brushMode = brushMode === 'drag' ? 'smooth' : 'drag';
+    scene.setBrushMode(brushMode);
+    console.log('Brush:', brushMode);
+  } else if (e.key === 'c' || e.key === 'C') {
+    scene.cyclePalette();
+    console.log('Palette:', scene.paletteName);
+  } else if (e.key === '`' || e.key === '~') {
+    const nowHidden = settingsPanel.classList.toggle('hidden');
+    settingsPanel.setAttribute('aria-hidden', String(nowHidden));
   }
 });
 

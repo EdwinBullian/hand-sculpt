@@ -25,6 +25,31 @@
     <canvas id="overlay"></canvas>
     <canvas id="scene3d"></canvas>
   </div>
+  <aside id="settings" class="settings hidden" aria-hidden="true">
+    <h3>Settings</h3>
+    <label>Smoother &alpha;
+      <input id="s-alpha" type="range" min="0.5" max="0.98" step="0.01" value="0.85" />
+      <output id="v-alpha">0.85</output>
+    </label>
+    <label>Sculpt pick radius
+      <input id="s-pick" type="range" min="0.10" max="1.50" step="0.05" value="0.50" />
+      <output id="v-pick">0.50</output>
+    </label>
+    <label>Sculpt falloff radius
+      <input id="s-falloff" type="range" min="0.20" max="2.00" step="0.05" value="0.80" />
+      <output id="v-falloff">0.80</output>
+    </label>
+    <label>Smooth neighbor radius
+      <input id="s-sn" type="range" min="0.10" max="0.60" step="0.01" value="0.25" />
+      <output id="v-sn">0.25</output>
+    </label>
+    <label>Smooth strength
+      <input id="s-ss" type="range" min="0.02" max="0.50" step="0.01" value="0.15" />
+      <output id="v-ss">0.15</output>
+    </label>
+    <button id="s-reset" type="button">Reset to defaults</button>
+    <small>Press <kbd>`</kbd> to toggle</small>
+  </aside>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

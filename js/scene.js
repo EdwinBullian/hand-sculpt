@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { createShape } from './shapes.js';
+import { mirrorPoint, mirrorDeltaSign } from './mirror.js';
+import { brushIndicesInRegion, smoothStep } from './smooth.js';
+import { PALETTES, cyclePaletteIndex, paletteColorAt } from './palettes.js';
 
 // Manages the Three.js scene, camera, renderer, and the currently-displayed mesh.
 // Each shape is a Group containing:
@@ -7,7 +10,7 @@ import { createShape } from './shapes.js';
 //   - a wireframe mesh as a child (inherits the group's transforms)
 // The wireframe stays on top so mesh edges are always visible.
 
-function applyVertexGradient(geom) {
+function applyVertexGradient(geom, palette) {
   const pos = geom.attributes.position;
   const colors = new Float32Array(pos.count * 3);
   let minY = Infinity, maxY = -Infinity;
@@ -19,20 +22,25 @@ function applyVertexGradient(geom) {
   const range = maxY - minY || 1;
   for (let i = 0; i < pos.count; i++) {
     const t = (pos.getY(i) - minY) / range;
-    // 0.15 (dark gray) at the bottom → 0.95 (near white) at the top.
-    const c = 0.15 + t * 0.8;
-    colors[i * 3]     = c;
-    colors[i * 3 + 1] = c;
-    colors[i * 3 + 2] = c;
+    const c = paletteColorAt(palette, t);
+    colors[i * 3]     = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
   }
   geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 }
 
 // Default pick / falloff radii (world units). Shapes are roughly 1–1.5 units
 // across, so 0.5 gives generous "near surface" tolerance and 0.8 pulls a
-// smooth region of neighbors along with the primary vertex.
-const SCULPT_PICK_RADIUS = 0.5;
-const SCULPT_FALLOFF_RADIUS = 0.8;
+// smooth region of neighbors along with the primary vertex. The settings
+// panel can override these at runtime via `scene.sculptPickRadius` etc.
+export const DEFAULT_SCULPT_PICK_RADIUS = 0.5;
+export const DEFAULT_SCULPT_FALLOFF_RADIUS = 0.8;
+// Smooth brush defaults. Strength is per-frame; holding the pinch longer
+// deepens the effect. Neighbor radius is how far the laplacian looks for
+// the local mean — too small = ineffective, too large = shape collapses.
+export const DEFAULT_SMOOTH_NEIGHBOR_RADIUS = 0.25;
+export const DEFAULT_SMOOTH_STRENGTH = 0.15;
 
 export class Scene {
   constructor(canvas) {
@@ -50,10 +58,25 @@ export class Scene {
     this._geom = null;
     // Sculpt state.
     this._sculpting = false;
-    this._sculptOriginals = null;       // Map<vertexIndex, {x,y,z,weight}>
+    this._sculptOriginals = null;       // Map<vertexIndex, {x,y,z,contribs:[{weight,sx,sy,sz}]}>
     this._sculptInitialPinchLocal = null;
     this._sculptUndoStack = [];         // Float32Array snapshots of position attribute
     this._UNDO_LIMIT = 20;
+    // Mirror sculpt: null | 'x' | 'y' | 'z'. When set, each sculpt deformation
+    // is duplicated across that axis with the on-axis motion-delta flipped.
+    this.mirrorAxis = null;
+    // Brush tool: 'drag' pulls a neighborhood with the hand; 'smooth' runs a
+    // laplacian average per frame to flatten noise. Locked in at startSculpt
+    // so switching B mid-stroke doesn't corrupt state.
+    this.brushMode = 'drag';
+    this._sculptMode = 'drag';
+    // Palette index into PALETTES; cycled by `C` from main.js.
+    this.paletteIndex = 0;
+    // Tunable sculpt / smooth parameters. Settings panel writes these directly.
+    this.sculptPickRadius = DEFAULT_SCULPT_PICK_RADIUS;
+    this.sculptFalloffRadius = DEFAULT_SCULPT_FALLOFF_RADIUS;
+    this.smoothNeighborRadius = DEFAULT_SMOOTH_NEIGHBOR_RADIUS;
+    this.smoothStrength = DEFAULT_SMOOTH_STRENGTH;
     this.currentShapeName = 'cube';
     this.setShape(this.currentShapeName);
     this.resize();
@@ -70,7 +93,7 @@ export class Scene {
       if (this._fillMat) this._fillMat.dispose();
       if (this._wireMat) this._wireMat.dispose();
     }
-    applyVertexGradient(geom);
+    applyVertexGradient(geom, PALETTES[this.paletteIndex]);
     const fillMat = new THREE.MeshBasicMaterial({ vertexColors: true });
     const wireMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
@@ -108,17 +131,51 @@ export class Scene {
     this.setShape(this.currentShapeName);
   }
 
+  setMirrorAxis(axis) {
+    // null | 'x' | 'y' | 'z'. Takes effect on the next startSculpt; an
+    // in-flight sculpt keeps whatever regions it captured.
+    this.mirrorAxis = axis;
+  }
+
+  setBrushMode(mode) {
+    // 'drag' | 'smooth'. Takes effect on the next startSculpt — an in-flight
+    // stroke keeps the mode it was started with.
+    this.brushMode = mode;
+  }
+
+  cyclePalette() {
+    this.paletteIndex = cyclePaletteIndex(this.paletteIndex);
+    if (this._geom) {
+      applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
+      // Render once so the change shows even when the tick loop isn't running.
+      this.render();
+    }
+    return this.paletteIndex;
+  }
+
+  get paletteName() {
+    return PALETTES[this.paletteIndex].name;
+  }
+
   // ---------- Sculpt API ----------
 
   get isSculpting() {
     return this._sculpting === true;
   }
 
-  // Try to grab the nearest vertex to `worldPoint`. Returns true on success.
-  // On success, stores original positions + falloff weights for every vertex
-  // within SCULPT_FALLOFF_RADIUS of the primary vertex, so `updateSculpt` can
-  // smoothly deform a neighborhood, not just one point.
+  // Public sculpt entry point — dispatches to the current brush mode. Returns
+  // true if a stroke was started (geometry claimed), false if the pinch was
+  // too far from any vertex / brush region is empty.
   startSculpt(worldPoint) {
+    if (this.brushMode === 'smooth') return this._startSmooth(worldPoint);
+    return this._startDrag(worldPoint);
+  }
+
+  // Drag sculpt: grab the nearest vertex to `worldPoint`, build one or more
+  // "brush regions" (primary + optional mirror), and store per-vertex
+  // contribution lists so `_updateDrag` can deform both sides of a symmetric
+  // sculpt in a single pass.
+  _startDrag(worldPoint) {
     if (!this._geom || !this.mesh) return false;
     const pos = this._geom.attributes.position;
     this.mesh.updateMatrixWorld();
@@ -137,7 +194,7 @@ export class Scene {
       const d = Math.hypot(dx, dy, dz);
       if (d < minD) { minD = d; primaryIdx = i; }
     }
-    if (primaryIdx < 0 || minD > SCULPT_PICK_RADIUS) return false;
+    if (primaryIdx < 0 || minD > this.sculptPickRadius) return false;
 
     // Snapshot the pre-mutation position buffer for undo. Float32Array.slice
     // returns a fresh buffer, decoupled from the live attribute.
@@ -146,25 +203,53 @@ export class Scene {
       this._sculptUndoStack.shift();
     }
 
-    // Build falloff map in LOCAL space (so it stays valid when the cube rotates).
-    const px = pos.getX(primaryIdx);
-    const py = pos.getY(primaryIdx);
-    const pz = pos.getZ(primaryIdx);
+    // Build the list of brush regions: always the primary, plus one mirrored
+    // region if mirrorAxis is set. Centers are in LOCAL space so they stay
+    // valid across rotations.
+    const primaryLocal = {
+      x: pos.getX(primaryIdx),
+      y: pos.getY(primaryIdx),
+      z: pos.getZ(primaryIdx),
+    };
+    const regions = [{ center: primaryLocal, deltaSign: { x: 1, y: 1, z: 1 } }];
+    if (this.mirrorAxis) {
+      regions.push({
+        center: mirrorPoint(primaryLocal, this.mirrorAxis),
+        deltaSign: mirrorDeltaSign(this.mirrorAxis),
+      });
+    }
+
+    // For each vertex inside any region's falloff ball, record one
+    // contribution per enclosing region. A vertex near the symmetry plane
+    // will naturally end up in both regions — its deltas sum, which is the
+    // correct mirrored behavior.
     this._sculptOriginals = new Map();
-    for (let i = 0; i < pos.count; i++) {
-      const dx = pos.getX(i) - px;
-      const dy = pos.getY(i) - py;
-      const dz = pos.getZ(i) - pz;
-      const d = Math.hypot(dx, dy, dz);
-      if (d < SCULPT_FALLOFF_RADIUS) {
-        // Linear falloff: primary vertex gets weight 1; far edge gets 0.
-        const w = 1 - d / SCULPT_FALLOFF_RADIUS;
-        this._sculptOriginals.set(i, {
-          x: pos.getX(i),
-          y: pos.getY(i),
-          z: pos.getZ(i),
-          weight: w,
-        });
+    for (const region of regions) {
+      const { center, deltaSign } = region;
+      for (let i = 0; i < pos.count; i++) {
+        const dx = pos.getX(i) - center.x;
+        const dy = pos.getY(i) - center.y;
+        const dz = pos.getZ(i) - center.z;
+        const d = Math.hypot(dx, dy, dz);
+        if (d < this.sculptFalloffRadius) {
+          const w = 1 - d / this.sculptFalloffRadius;
+          let entry = this._sculptOriginals.get(i);
+          if (!entry) {
+            entry = {
+              x: pos.getX(i),
+              y: pos.getY(i),
+              z: pos.getZ(i),
+              contribs: [],
+            };
+            this._sculptOriginals.set(i, entry);
+          }
+          entry.contribs.push({
+            weight: w,
+            sx: deltaSign.x,
+            sy: deltaSign.y,
+            sz: deltaSign.z,
+          });
+        }
       }
     }
 
@@ -172,12 +257,47 @@ export class Scene {
     const initLocal = new THREE.Vector3(worldPoint.x, worldPoint.y, worldPoint.z)
       .applyMatrix4(invMat);
     this._sculptInitialPinchLocal = { x: initLocal.x, y: initLocal.y, z: initLocal.z };
+    this._sculptMode = 'drag';
+    this._sculpting = true;
+    return true;
+  }
+
+  // Smooth sculpt: no originals, no delta tracking. Each frame we recompute
+  // the brush region at the current pinch point and run one laplacian
+  // iteration — holding longer / dragging paints more smoothing.
+  _startSmooth(worldPoint) {
+    if (!this._geom || !this.mesh) return false;
+    const pos = this._geom.attributes.position;
+    this.mesh.updateMatrixWorld();
+    const invMat = new THREE.Matrix4().copy(this.mesh.matrixWorld).invert();
+
+    const initLocal = new THREE.Vector3(worldPoint.x, worldPoint.y, worldPoint.z)
+      .applyMatrix4(invMat);
+    const region = brushIndicesInRegion(
+      pos.array,
+      { x: initLocal.x, y: initLocal.y, z: initLocal.z },
+      this.sculptFalloffRadius,
+    );
+    if (region.length === 0) return false;
+
+    // Snapshot for undo — one snapshot per stroke, same as drag.
+    this._sculptUndoStack.push(pos.array.slice());
+    if (this._sculptUndoStack.length > this._UNDO_LIMIT) {
+      this._sculptUndoStack.shift();
+    }
+
+    this._sculptMode = 'smooth';
     this._sculpting = true;
     return true;
   }
 
   updateSculpt(worldPoint) {
     if (!this._sculpting || !this._geom || !this.mesh) return;
+    if (this._sculptMode === 'smooth') return this._updateSmooth(worldPoint);
+    return this._updateDrag(worldPoint);
+  }
+
+  _updateDrag(worldPoint) {
     const pos = this._geom.attributes.position;
     this.mesh.updateMatrixWorld();
     const invMat = new THREE.Matrix4().copy(this.mesh.matrixWorld).invert();
@@ -188,24 +308,49 @@ export class Scene {
     const dy = nowLocal.y - this._sculptInitialPinchLocal.y;
     const dz = nowLocal.z - this._sculptInitialPinchLocal.z;
 
-    for (const [idx, orig] of this._sculptOriginals) {
-      pos.setXYZ(
-        idx,
-        orig.x + dx * orig.weight,
-        orig.y + dy * orig.weight,
-        orig.z + dz * orig.weight,
-      );
+    for (const [idx, entry] of this._sculptOriginals) {
+      let tx = 0, ty = 0, tz = 0;
+      for (const c of entry.contribs) {
+        tx += dx * c.sx * c.weight;
+        ty += dy * c.sy * c.weight;
+        tz += dz * c.sz * c.weight;
+      }
+      pos.setXYZ(idx, entry.x + tx, entry.y + ty, entry.z + tz);
     }
     pos.needsUpdate = true;
     // Keep the gradient in sync: vertex colors are cheap to recompute and the
     // top/bottom of the shape can shift noticeably during sculpting.
-    applyVertexGradient(this._geom);
+    applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
+  }
+
+  _updateSmooth(worldPoint) {
+    const pos = this._geom.attributes.position;
+    this.mesh.updateMatrixWorld();
+    const invMat = new THREE.Matrix4().copy(this.mesh.matrixWorld).invert();
+    const nowLocal = new THREE.Vector3(worldPoint.x, worldPoint.y, worldPoint.z)
+      .applyMatrix4(invMat);
+    const center = { x: nowLocal.x, y: nowLocal.y, z: nowLocal.z };
+
+    const region = brushIndicesInRegion(pos.array, center, this.sculptFalloffRadius);
+    if (region.length > 0) {
+      smoothStep(pos.array, region, this.smoothNeighborRadius, this.smoothStrength);
+    }
+    if (this.mirrorAxis) {
+      const mCenter = mirrorPoint(center, this.mirrorAxis);
+      const mRegion = brushIndicesInRegion(pos.array, mCenter, this.sculptFalloffRadius);
+      if (mRegion.length > 0) {
+        smoothStep(pos.array, mRegion, this.smoothNeighborRadius, this.smoothStrength);
+      }
+    }
+    pos.needsUpdate = true;
+    applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
   }
 
   stopSculpt() {
     this._sculpting = false;
     this._sculptOriginals = null;
     this._sculptInitialPinchLocal = null;
+    this._sculptMode = this.brushMode;
   }
 
   // Revert the most recent sculpt (restore the snapshot pushed in startSculpt).
@@ -216,8 +361,10 @@ export class Scene {
     const pos = this._geom.attributes.position;
     pos.array.set(snapshot);
     pos.needsUpdate = true;
-    applyVertexGradient(this._geom);
+    applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
     this.stopSculpt();
+    // Render once so the undo shows even when the tick loop isn't running.
+    this.render();
     return true;
   }
 
