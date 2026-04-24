@@ -6,6 +6,9 @@
 export class PoseSmoother {
   constructor(alpha = 0.4) {
     this.alpha = alpha;
+    // Ignore position updates smaller than this world-space distance.
+    // Prevents micro-jitter when the hand is mostly still. 0 = disabled.
+    this.positionDeadZone = 0;
     this.pos = null;
     this.quat = null;
   }
@@ -17,11 +20,19 @@ export class PoseSmoother {
       return { position: { ...this.pos }, quaternion: { ...this.quat } };
     }
     const a = this.alpha;
-    this.pos = {
+    const newPos = {
       x: a * position.x + (1 - a) * this.pos.x,
       y: a * position.y + (1 - a) * this.pos.y,
       z: a * position.z + (1 - a) * this.pos.z,
     };
+    if (this.positionDeadZone > 0) {
+      const dx = newPos.x - this.pos.x;
+      const dy = newPos.y - this.pos.y;
+      const dz = newPos.z - this.pos.z;
+      if (Math.hypot(dx, dy, dz) >= this.positionDeadZone) this.pos = newPos;
+    } else {
+      this.pos = newPos;
+    }
     const dot = this.quat.x * quaternion.x + this.quat.y * quaternion.y +
                 this.quat.z * quaternion.z + this.quat.w * quaternion.w;
     const q = (dot < 0)

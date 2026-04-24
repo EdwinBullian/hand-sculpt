@@ -25,7 +25,9 @@ const tracker = new Tracker();
 const overlay = new Overlay(overlayCanvas);
 const scene = new Scene(sceneCanvas);
 const singleHandPose = new SingleHandPose();
-const smoother = new PoseSmoother(0.85);
+const smoother = new PoseSmoother(0.15);
+smoother.positionDeadZone = 0.02;
+const handQuatSmoother = new PoseSmoother(0.08); // pre-smooth raw hand quat before accumulator
 const rotationAccum = new RotationAccumulator();
 const pinchScale = new TwoHandPinchScale();
 const squish = new FlatPalmSquish();
@@ -69,6 +71,7 @@ function currentMeshScale() {
 
 function resetAll() {
   smoother.reset();
+  handQuatSmoother.reset();
   pinchScale.reset();
   squish.reset();
   stretch.reset();
@@ -164,7 +167,8 @@ function tick() {
           } else {
             const pose = singleHandPose.detect(results);
             if (pose.active) {
-              const cubeOrientation = rotationAccum.onActive(pose.quaternion);
+              const preSmoothed = handQuatSmoother.update(pose.position, pose.quaternion);
+              const cubeOrientation = rotationAccum.onActive(preSmoothed.quaternion);
               const smoothed = smoother.update(pose.position, cubeOrientation);
               if (frozen) {
                 gestureLabel = 'FROZEN';
@@ -270,7 +274,7 @@ wireSlider('s-bloom',   'v-bloom',   (v) => { scene.setBloomStrength(v); });
 
 document.getElementById('s-reset').addEventListener('click', () => {
   const defaults = {
-    's-alpha': 0.85, 's-pick': 0.50, 's-falloff': 0.80, 's-sn': 0.25, 's-ss': 0.15, 's-bloom': 1.50,
+    's-alpha': 0.15, 's-pick': 0.50, 's-falloff': 0.80, 's-sn': 0.25, 's-ss': 0.15, 's-bloom': 1.50,
   };
   for (const [id, value] of Object.entries(defaults)) {
     const el = document.getElementById(id);
