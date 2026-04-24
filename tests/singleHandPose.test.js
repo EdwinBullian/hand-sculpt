@@ -57,10 +57,12 @@ test('handSpaceToWorld maps hand centroid to Three.js world coordinates', () => 
   assert.ok(Math.abs(w.x) < 1e-9);
   assert.ok(Math.abs(w.y) < 1e-9);
   assert.ok(Math.abs(w.z) < 1e-9);
+  // X_SCALE = 8, so hand x=1 → world x = -(0.5)*8 = -4
   const right = handSpaceToWorld({ x: 1, y: 0.5, z: 0 });
-  assert.ok(Math.abs(right.x - (-2)) < 1e-6);
+  assert.ok(Math.abs(right.x - (-4)) < 1e-6);
+  // Y_SCALE = 5, so hand y=0 → world y = -(-0.5)*5 = 2.5
   const top = handSpaceToWorld({ x: 0.5, y: 0, z: 0 });
-  assert.ok(Math.abs(top.y - 2) < 1e-6);
+  assert.ok(Math.abs(top.y - 2.5) < 1e-6);
   const near = handSpaceToWorld({ x: 0.5, y: 0.5, z: -0.3 });
   assert.ok(Math.abs(near.z - 0.999) < 1e-2);
 });

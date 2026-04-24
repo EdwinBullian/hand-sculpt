@@ -8,14 +8,17 @@
 import { palmNormal, palmFacesCamera } from './palmDirection.js';
 
 // Position mapping from MediaPipe hand-space (x,y ∈ [0,1], z ≈ [-0.3,+0.3]) to
-// Three.js world coords. Tunable — see design.md §11 "Open Questions."
-const XY_SCALE = 4;    // hand x/y displacement of 0.5 → ±2 world units
+// Three.js world coords. Sized so hand movement at the edge of the image lines
+// up (approximately) pixel-for-pixel with the cube's movement on screen at the
+// default 16:9 stage aspect ratio and camera FOV 50°, z=5.
+const X_SCALE = 8;     // hand x displacement of 0.5 → ±4 world units
+const Y_SCALE = 5;     // hand y displacement of 0.5 → ±2.5 world units
 const Z_SCALE = 3.33;  // hand z displacement of 0.3 → ±1 world unit
 
 export function handSpaceToWorld(p) {
   return {
-    x: -(p.x - 0.5) * XY_SCALE,   // mirror flip: hand-right on screen → world +X
-    y: -(p.y - 0.5) * XY_SCALE,   // y-axis flip: MediaPipe y-down → world y-up
+    x: -(p.x - 0.5) * X_SCALE,   // mirror flip: hand-right on screen → world +X
+    y: -(p.y - 0.5) * Y_SCALE,   // y-axis flip: MediaPipe y-down → world y-up
     z: -p.z * Z_SCALE,             // z flip: MediaPipe z-toward-camera is negative → world +Z
   };
 }
