@@ -8,6 +8,8 @@ import { PoseSmoother } from './poseSmoother.js';
 import { TwoHandPinchScale } from './gestures/twoHandPinchScale.js';
 import { FlatPalmSquish } from './gestures/flatPalmSquish.js';
 import { FingerCountHold } from './gestures/fingerCountHold.js';
+import { BothBacksReset } from './gestures/bothBacksReset.js';
+import { SnapFreeze } from './gestures/snapFreeze.js';
 
 const videoEl = document.getElementById('webcam');
 const overlayCanvas = document.getElementById('overlay');
@@ -18,14 +20,17 @@ const tracker = new Tracker();
 const overlay = new Overlay(overlayCanvas);
 const scene = new Scene(sceneCanvas);
 const singleHandPose = new SingleHandPose();
-const smoother = new PoseSmoother(0.4);
+const smoother = new PoseSmoother(0.7);
 const pinchScale = new TwoHandPinchScale();
 const squish = new FlatPalmSquish();
 const fingerHold = new FingerCountHold(30);
+const bothBacks = new BothBacksReset();
+const snapFreeze = new SnapFreeze(5);
 
 const SHAPES_BY_COUNT = [null, 'sphere', 'cube', 'pyramid', 'cylinder', 'torus'];
 
 let running = false;
+let frozen = false;
 
 function syncCanvasSizes() {
   const rect = overlayCanvas.getBoundingClientRect();
@@ -48,6 +53,13 @@ function currentMeshScale() {
   return { x: s.x, y: s.y, z: s.z };
 }
 
+function resetAll() {
+  smoother.reset();
+  pinchScale.reset();
+  squish.reset();
+  scene.reset();
+}
+
 function tick() {
   if (!running) return;
   const t = performance.now();
@@ -63,13 +75,17 @@ function tick() {
   const rightFingers = rightHands.reduce((n, lm) => n + countExtendedFingers(lm), 0);
   const totalFingers = leftFingers + rightFingers;
 
-  const pose = singleHandPose.detect(results);
+  // Snap toggles freeze regardless of other state.
+  const snap = snapFreeze.detect(results);
+  if (snap.toggle) frozen = !frozen;
+
   let gestureLabel;
 
-  if (pose.paused) {
-    gestureLabel = 'PAUSED';
-    pinchScale.reset();
-    squish.reset();
+  if (frozen) {
+    gestureLabel = 'FROZEN';
+  } else if (bothBacks.detect(results).active) {
+    gestureLabel = 'RESET';
+    resetAll();
   } else {
     const scaleNow = currentMeshScale();
     const ps = pinchScale.detect(results, scaleNow);
@@ -82,15 +98,19 @@ function tick() {
       if (sq.active) {
         gestureLabel = 'SQUISH-' + sq.axis.toUpperCase();
         scene.setScale(sq.scale);
-      } else if (pose.active) {
-        gestureLabel = 'FORCE';
-        const smoothed = smoother.update(pose.position, pose.quaternion);
-        scene.setPose(smoothed);
       } else {
-        gestureLabel = 'IDLE';
+        const pose = singleHandPose.detect(results);
+        if (pose.active) {
+          gestureLabel = pose.handCount === 2 ? 'FORCE-2' : 'FORCE-1';
+          const smoothed = smoother.update(pose.position, pose.quaternion);
+          scene.setPose(smoothed);
+        } else {
+          gestureLabel = 'IDLE';
+        }
       }
     }
 
+    // Shape swap runs in parallel with position gestures.
     const swap = fingerHold.detect(results);
     if (swap.fired !== null) {
       const shapeName = SHAPES_BY_COUNT[swap.fired];
@@ -136,10 +156,8 @@ function stop() {
 }
 
 function reset() {
-  smoother.reset();
-  pinchScale.reset();
-  squish.reset();
-  scene.reset();
+  frozen = false;
+  resetAll();
 }
 
 document.getElementById('start').addEventListener('click', start);
