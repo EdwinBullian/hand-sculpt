@@ -63,8 +63,9 @@ test('handSpaceToWorld maps hand centroid to Three.js world coordinates', () => 
   // Y_SCALE = 5, so hand y=0 → world y = -(-0.5)*5 = 2.5
   const top = handSpaceToWorld({ x: 0.5, y: 0, z: 0 });
   assert.ok(Math.abs(top.y - 2.5) < 1e-6);
-  const near = handSpaceToWorld({ x: 0.5, y: 0.5, z: -0.3 });
-  assert.ok(Math.abs(near.z - 0.999) < 1e-2);
+  // worldZ is now a direct parameter (hand-size depth, not landmark z)
+  const near = handSpaceToWorld({ x: 0.5, y: 0.5 }, 0.999);
+  assert.ok(Math.abs(near.z - 0.999) < 1e-6);
 });
 
 test('detect — no hands → inactive, handCount 0', () => {

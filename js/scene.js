@@ -107,7 +107,7 @@ export class Scene {
       if (this._wireMat) this._wireMat.dispose();
     }
     applyVertexGradient(geom, PALETTES[this.paletteIndex]);
-    const fillMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    const fillMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.FrontSide });
     const wireMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       wireframe: true,
@@ -134,7 +134,7 @@ export class Scene {
     this._sculptRedoStack.length = 0;
     applyVertexGradient(geom, PALETTES[this.paletteIndex]);
     const newFillMat = new THREE.MeshBasicMaterial({
-      vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0,
+      vertexColors: true, side: THREE.FrontSide, transparent: true, opacity: 0,
     });
     const newWireMat = new THREE.MeshBasicMaterial({
       color: 0xffffff, wireframe: true, transparent: true, opacity: 0,

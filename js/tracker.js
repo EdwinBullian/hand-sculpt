@@ -3,12 +3,17 @@ import {
   HandLandmarker,
 } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17/vision_bundle.mjs';
 
+// If the model drops all hands for fewer than this many frames (e.g. during a
+// wrist rotation), hold the last known landmarks rather than snapping to idle.
+const STICKY_FRAMES = 8; // ~133ms at 60fps
+
 // Tracks up to 2 hands per frame via MediaPipe HandLandmarker.
 // Call init() once, then detect(videoEl, timestampMs) each frame.
 export class Tracker {
   constructor() {
     this.landmarker = null;
     this.lastResults = { landmarks: [], handedness: [] };
+    this._stickyCount = 0;
   }
 
   async init() {
@@ -34,10 +39,20 @@ export class Tracker {
   detect(videoEl, timestampMs) {
     if (!this.landmarker || videoEl.readyState < 2) return this.lastResults;
     const r = this.landmarker.detectForVideo(videoEl, timestampMs);
-    this.lastResults = {
+    const fresh = {
       landmarks: r.landmarks || [],
       handedness: r.handedness || [],
     };
-    return this.lastResults;
+    if (fresh.landmarks.length === 0 && this.lastResults.landmarks.length > 0) {
+      // Brief loss of detection — hold last known results for STICKY_FRAMES
+      if (this._stickyCount < STICKY_FRAMES) {
+        this._stickyCount++;
+        return this.lastResults;
+      }
+    } else {
+      this._stickyCount = 0;
+    }
+    this.lastResults = fresh;
+    return fresh;
   }
 }

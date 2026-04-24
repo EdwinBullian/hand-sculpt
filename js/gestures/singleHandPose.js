@@ -7,19 +7,30 @@
 
 import { palmNormal, palmFacesCamera } from './palmDirection.js';
 
-// Position mapping from MediaPipe hand-space (x,y ∈ [0,1], z ≈ [-0.3,+0.3]) to
-// Three.js world coords. Sized so hand movement at the edge of the image lines
-// up (approximately) pixel-for-pixel with the cube's movement on screen at the
-// default 16:9 stage aspect ratio and camera FOV 50°, z=5.
-const X_SCALE = 8;     // hand x displacement of 0.5 → ±4 world units
-const Y_SCALE = 5;     // hand y displacement of 0.5 → ±2.5 world units
-const Z_SCALE = 3.33;  // hand z displacement of 0.3 → ±1 world unit
+// Position mapping from MediaPipe hand-space to Three.js world coords.
+const X_SCALE = 8;    // hand x displacement of 0.5 → ±4 world units
+const Y_SCALE = 5;    // hand y displacement of 0.5 → ±2.5 world units
 
-export function handSpaceToWorld(p) {
+// Reference wrist→MCP9 screen distance at a comfortable arm-length.
+// Larger apparent size = closer to camera.
+const REF_HAND_SIZE = 0.10;
+const DEPTH_SCALE = 4.0; // world units per relative size change
+
+// Estimate camera depth from apparent hand size (wrist-to-middle-MCP screen distance).
+// Much more reliable than MediaPipe's z, which is relative to the wrist, not the camera.
+function handDepth(lm) {
+  const dx = lm[0].x - lm[9].x;
+  const dy = lm[0].y - lm[9].y;
+  const size = Math.hypot(dx, dy);
+  if (size < 0.001) return 0;
+  return Math.max(-3, Math.min(3, (size / REF_HAND_SIZE - 1) * DEPTH_SCALE));
+}
+
+export function handSpaceToWorld(p, worldZ = 0) {
   return {
-    x: -(p.x - 0.5) * X_SCALE,   // mirror flip: hand-right on screen → world +X
-    y: -(p.y - 0.5) * Y_SCALE,   // y-axis flip: MediaPipe y-down → world y-up
-    z: -p.z * Z_SCALE,             // z flip: MediaPipe z-toward-camera is negative → world +Z
+    x: -(p.x - 0.5) * X_SCALE,
+    y: -(p.y - 0.5) * Y_SCALE,
+    z: worldZ,
   };
 }
 
@@ -143,15 +154,17 @@ export class SingleHandPose {
     if (palmUp.length === 1) {
       const { lm, isLeftHand } = palmUp[0];
       const centroid = palmCentroid(lm);
-      const position = handSpaceToWorld(centroid);
+      const position = handSpaceToWorld(centroid, handDepth(lm));
       const quaternion = handQuaternion(lm, isLeftHand);
       return { active: true, handCount: 1, position, quaternion };
     }
 
     if (palmUp.length === 2) {
-      const c0 = handSpaceToWorld(palmCentroid(palmUp[0].lm));
-      const c1 = handSpaceToWorld(palmCentroid(palmUp[1].lm));
-      const position = { x: (c0.x + c1.x) / 2, y: (c0.y + c1.y) / 2, z: (c0.z + c1.z) / 2 };
+      const c0 = palmCentroid(palmUp[0].lm);
+      const c1 = palmCentroid(palmUp[1].lm);
+      const w0 = handSpaceToWorld(c0, handDepth(palmUp[0].lm));
+      const w1 = handSpaceToWorld(c1, handDepth(palmUp[1].lm));
+      const position = { x: (w0.x + w1.x) / 2, y: (w0.y + w1.y) / 2, z: (w0.z + w1.z) / 2 };
       const q0 = handQuaternion(palmUp[0].lm, palmUp[0].isLeftHand);
       const q1 = handQuaternion(palmUp[1].lm, palmUp[1].isLeftHand);
       const quaternion = averageQuaternion(q0, q1);
