@@ -20,7 +20,7 @@ const tracker = new Tracker();
 const overlay = new Overlay(overlayCanvas);
 const scene = new Scene(sceneCanvas);
 const singleHandPose = new SingleHandPose();
-const smoother = new PoseSmoother(0.7);
+const smoother = new PoseSmoother(1.0);
 const pinchScale = new TwoHandPinchScale();
 const squish = new FlatPalmSquish();
 const fingerHold = new FingerCountHold(30);
@@ -81,23 +81,25 @@ function tick() {
 
   let gestureLabel;
 
-  if (frozen) {
-    gestureLabel = 'FROZEN';
-  } else if (bothBacks.detect(results).active) {
+  if (bothBacks.detect(results).active) {
     gestureLabel = 'RESET';
     resetAll();
+    frozen = false;
   } else {
     const scaleNow = currentMeshScale();
+    // Scale gestures run whether frozen or not — freeze only blocks Force.
     const ps = pinchScale.detect(results, scaleNow);
     if (ps.active) {
-      gestureLabel = 'PINCH-SCALE';
+      gestureLabel = frozen ? 'FROZEN+PINCH-SCALE' : 'PINCH-SCALE';
       scene.setScale(ps.scale);
       squish.reset();
     } else {
       const sq = squish.detect(results, scaleNow);
       if (sq.active) {
-        gestureLabel = 'SQUISH-' + sq.axis.toUpperCase();
+        gestureLabel = (frozen ? 'FROZEN+SQUISH-' : 'SQUISH-') + sq.axis.toUpperCase();
         scene.setScale(sq.scale);
+      } else if (frozen) {
+        gestureLabel = 'FROZEN';
       } else {
         const pose = singleHandPose.detect(results);
         if (pose.active) {
@@ -110,7 +112,7 @@ function tick() {
       }
     }
 
-    // Shape swap runs in parallel with position gestures.
+    // Shape swap runs in parallel with scale gestures, independent of freeze.
     const swap = fingerHold.detect(results);
     if (swap.fired !== null) {
       const shapeName = SHAPES_BY_COUNT[swap.fired];
