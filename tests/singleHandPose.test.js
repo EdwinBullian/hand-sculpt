@@ -65,28 +65,28 @@ test('handSpaceToWorld maps hand centroid to Three.js world coordinates', () => 
   assert.ok(Math.abs(near.z - 0.999) < 1e-2);
 });
 
-test('detect — no hands → inactive, not paused', () => {
+test('detect — no hands → inactive, handCount 0', () => {
   const g = new SingleHandPose();
   const r = g.detect({ landmarks: [], handedness: [] });
   assert.equal(r.active, false);
-  assert.equal(r.paused, false);
+  assert.equal(r.handCount, 0);
 });
 
-test('detect — two hands both palms-down → paused, inactive', () => {
+test('detect — two hands both palms-down → inactive (reset handled elsewhere)', () => {
   const g = new SingleHandPose();
   const r = g.detect(results(
     { lm: RIGHT_HAND_PALM_IN, side: 'Right' },
     { lm: LEFT_HAND_PALM_IN, side: 'Left' },
   ));
   assert.equal(r.active, false);
-  assert.equal(r.paused, true);
+  assert.equal(r.handCount, 0);
 });
 
-test('detect — single palm-up hand → active, position + quaternion present', () => {
+test('detect — single palm-up hand → active, handCount 1, position + quaternion present', () => {
   const g = new SingleHandPose();
   const r = g.detect(results({ lm: RIGHT_HAND_PALM_OUT, side: 'Right' }));
   assert.equal(r.active, true);
-  assert.equal(r.paused, false);
+  assert.equal(r.handCount, 1);
   assert.ok(r.position, 'position should be defined');
   assert.ok(r.quaternion, 'quaternion should be defined');
   const q = r.quaternion;
@@ -94,29 +94,35 @@ test('detect — single palm-up hand → active, position + quaternion present',
   assert.ok(Math.abs(len - 1) < 1e-5, `expected unit quaternion, got length ${len}`);
 });
 
-test('detect — two hands, only one palm-up → active (the up hand)', () => {
+test('detect — two hands, only one palm-up → active (handCount 1, tracks the up hand)', () => {
   const g = new SingleHandPose();
   const r = g.detect(results(
     { lm: RIGHT_HAND_PALM_OUT, side: 'Right' },
     { lm: LEFT_HAND_PALM_IN, side: 'Left' },
   ));
   assert.equal(r.active, true);
-  assert.equal(r.paused, false);
+  assert.equal(r.handCount, 1);
 });
 
-test('detect — two hands, both palms-up → inactive (Phase 3 two-hand mode)', () => {
+test('detect — two hands, both palms-up → active with midpoint position, handCount 2', () => {
   const g = new SingleHandPose();
   const r = g.detect(results(
     { lm: RIGHT_HAND_PALM_OUT, side: 'Right' },
     { lm: LEFT_HAND_PALM_OUT, side: 'Left' },
   ));
-  assert.equal(r.active, false);
-  assert.equal(r.paused, false);
+  assert.equal(r.active, true);
+  assert.equal(r.handCount, 2);
+  // Both hands centered symmetrically around image x=0.5, so world.x midpoint ≈ 0.
+  assert.ok(Math.abs(r.position.x) < 1e-3, `expected midpoint x≈0, got ${r.position.x}`);
+  // Quaternion is unit length.
+  const q = r.quaternion;
+  const len = Math.hypot(q.x, q.y, q.z, q.w);
+  assert.ok(Math.abs(len - 1) < 1e-5, `expected unit quaternion, got length ${len}`);
 });
 
-test('detect — single palm-down hand → inactive, not paused (one back is not pause)', () => {
+test('detect — single palm-down hand → inactive', () => {
   const g = new SingleHandPose();
   const r = g.detect(results({ lm: RIGHT_HAND_PALM_IN, side: 'Right' }));
   assert.equal(r.active, false);
-  assert.equal(r.paused, false);
+  assert.equal(r.handCount, 0);
 });

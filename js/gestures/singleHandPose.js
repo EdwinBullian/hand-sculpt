@@ -1,7 +1,9 @@
 // SingleHandPose: the "Force" gesture.
-// Consumes MediaPipe results and produces { active, paused, position, quaternion }.
-// Active when exactly one hand has palm facing camera; paused when both hands
-// show their backs. All other states are inactive + not paused.
+// Consumes MediaPipe results and produces { active, position, quaternion, handCount }.
+// Active when one or two palms face the camera.
+// - 1 palm up: position = that palm's centroid; orientation = that palm's quaternion.
+// - 2 palms up: position = midpoint of both centroids; orientation = averaged quaternion.
+// Reset and freeze are handled by separate gestures (BothBacksReset, SnapFreeze).
 
 import { palmNormal, palmFacesCamera } from './palmDirection.js';
 
@@ -106,12 +108,24 @@ function handQuaternion(landmarks, isLeftHand) {
   return quaternionFromBasis(right, upOrtho, normal);
 }
 
+function averageQuaternion(q1, q2) {
+  // Double-cover shortcut: if dot < 0 flip q2 so we take the short path.
+  const dot = q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
+  const q2s = dot < 0 ? { x: -q2.x, y: -q2.y, z: -q2.z, w: -q2.w } : q2;
+  const ax = (q1.x + q2s.x) * 0.5;
+  const ay = (q1.y + q2s.y) * 0.5;
+  const az = (q1.z + q2s.z) * 0.5;
+  const aw = (q1.w + q2s.w) * 0.5;
+  const len = Math.hypot(ax, ay, az, aw);
+  if (len === 0) return { x: 0, y: 0, z: 0, w: 1 };
+  return { x: ax / len, y: ay / len, z: az / len, w: aw / len };
+}
+
 export class SingleHandPose {
   detect(results) {
     const palmUp = [];
-    const palmDown = [];
     if (!results || !results.landmarks || !results.handedness) {
-      return { active: false, paused: false };
+      return { active: false, handCount: 0 };
     }
     for (let i = 0; i < results.landmarks.length; i++) {
       const lm = results.landmarks[i];
@@ -120,13 +134,7 @@ export class SingleHandPose {
       const isLeftHand = side === 'Left';
       if (palmFacesCamera(lm, isLeftHand)) {
         palmUp.push({ lm, isLeftHand });
-      } else {
-        palmDown.push({ lm, isLeftHand });
       }
-    }
-
-    if (palmUp.length === 0 && palmDown.length === 2) {
-      return { active: false, paused: true };
     }
 
     if (palmUp.length === 1) {
@@ -134,9 +142,19 @@ export class SingleHandPose {
       const centroid = palmCentroid(lm);
       const position = handSpaceToWorld(centroid);
       const quaternion = handQuaternion(lm, isLeftHand);
-      return { active: true, paused: false, position, quaternion };
+      return { active: true, handCount: 1, position, quaternion };
     }
 
-    return { active: false, paused: false };
+    if (palmUp.length === 2) {
+      const c0 = handSpaceToWorld(palmCentroid(palmUp[0].lm));
+      const c1 = handSpaceToWorld(palmCentroid(palmUp[1].lm));
+      const position = { x: (c0.x + c1.x) / 2, y: (c0.y + c1.y) / 2, z: (c0.z + c1.z) / 2 };
+      const q0 = handQuaternion(palmUp[0].lm, palmUp[0].isLeftHand);
+      const q1 = handQuaternion(palmUp[1].lm, palmUp[1].isLeftHand);
+      const quaternion = averageQuaternion(q0, q1);
+      return { active: true, handCount: 2, position, quaternion };
+    }
+
+    return { active: false, handCount: 0 };
   }
 }
