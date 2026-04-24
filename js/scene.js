@@ -88,16 +88,17 @@ export class Scene {
     this._bloomEnabled = false;
     this._composer = null;   // EffectComposer instance
     this._bloomPass = null;  // UnrealBloomPass — kept for setBloomStrength()
+    this._shapeAnim = null;  // { phase:'out'|'in', pendingName, startT, dur }
     this.currentShapeName = 'cube';
-    this.setShape(this.currentShapeName);
+    this._doSetShape(this.currentShapeName);
     this.resize();
   }
 
-  setShape(name) {
+  _doSetShape(name) {
     const geom = createShape(name);
     if (!geom) return;
     this.stopSculpt();
-    this._sculptUndoStack.length = 0; // snapshots are tied to the old geometry
+    this._sculptUndoStack.length = 0;
     this._sculptRedoStack.length = 0;
     if (this.mesh) {
       this.scene.remove(this.mesh);
@@ -106,7 +107,7 @@ export class Scene {
       if (this._wireMat) this._wireMat.dispose();
     }
     applyVertexGradient(geom, PALETTES[this.paletteIndex]);
-    const fillMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    const fillMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
     const wireMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       wireframe: true,
@@ -124,6 +125,30 @@ export class Scene {
     this.currentShapeName = name;
   }
 
+  setShape(name) {
+    if (this._shapeAnim) return; // don't interrupt an in-progress transition
+    if (!createShape(name)) return;
+    this._shapeAnim = { phase: 'out', pendingName: name, startT: performance.now(), dur: 160 };
+  }
+
+  _tickShapeAnim() {
+    if (!this._shapeAnim || !this.mesh) return;
+    const { phase, pendingName, startT, dur } = this._shapeAnim;
+    const t = Math.min(1, (performance.now() - startT) / dur);
+    if (phase === 'out') {
+      this.mesh.scale.setScalar(1 - t);
+      if (t >= 1) {
+        this._doSetShape(pendingName);
+        this._shapeAnim = { phase: 'in', pendingName, startT: performance.now(), dur };
+      }
+    } else {
+      // Ease in with a slight overshoot (back ease)
+      const s = t < 1 ? 1 - Math.pow(1 - t, 3) : 1;
+      this.mesh.scale.setScalar(s);
+      if (t >= 1) this._shapeAnim = null;
+    }
+  }
+
   setPose(pose) {
     if (!this.mesh || !pose) return;
     const p = pose.position;
@@ -133,14 +158,15 @@ export class Scene {
   }
 
   setScale(scale) {
-    if (!this.mesh || !scale) return;
+    if (!this.mesh || !scale || this._shapeAnim) return;
     this.mesh.scale.set(scale.x, scale.y, scale.z);
   }
 
   // Restore: fresh geometry + identity transform. Undoes any sculpting.
   reset() {
+    this._shapeAnim = null;
     this.stopSculpt();
-    this.setShape(this.currentShapeName);
+    this._doSetShape(this.currentShapeName);
   }
 
   setMirrorAxis(axis) {
@@ -522,6 +548,7 @@ export class Scene {
   }
 
   render() {
+    this._tickShapeAnim();
     if (this._bloomEnabled && this._composer) {
       this._composer.render();
     } else {
