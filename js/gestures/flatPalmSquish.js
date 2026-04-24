@@ -3,7 +3,9 @@ import { palmCentroid, handSpaceToWorld } from './singleHandPose.js';
 import { countExtendedFingers } from '../fingers.js';
 
 // Both palms flat (≥4 fingers extended) + palm normals antiparallel (facing each other).
-// Non-uniform scale along the dominant world axis of the hand-to-hand vector.
+// Ratchet compress-only: tracks minimum hand distance since activation.
+// Scale on dominant axis = baseline * (min/baseline), always ≤ 1. Hands moving
+// apart never grow the shape back — only stretch gesture can expand.
 
 const FLAT_FINGER_MIN = 4;
 const PALM_DOT_MAX = -0.3;
@@ -28,6 +30,7 @@ export class FlatPalmSquish {
     this.baselineDistance = null;
     this.baselineScaleAxis = null;
     this.axis = null;
+    this.minDistance = null;
   }
 
   detect(results, currentScale) {
@@ -60,8 +63,10 @@ export class FlatPalmSquish {
       this.baselineDistance = d || 1e-6;
       this.axis = dominantAxis(vec);
       this.baselineScaleAxis = currentScale[this.axis];
+      this.minDistance = this.baselineDistance;
     }
-    const ratio = d / this.baselineDistance;
+    if (d < this.minDistance) this.minDistance = d;
+    const ratio = this.minDistance / this.baselineDistance;
     const newScale = { x: currentScale.x, y: currentScale.y, z: currentScale.z };
     newScale[this.axis] = this.baselineScaleAxis * ratio;
     return { active: true, scale: newScale, axis: this.axis };
@@ -71,5 +76,6 @@ export class FlatPalmSquish {
     this.baselineDistance = null;
     this.baselineScaleAxis = null;
     this.axis = null;
+    this.minDistance = null;
   }
 }

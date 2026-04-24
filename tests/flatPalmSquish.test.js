@@ -106,16 +106,36 @@ test('inactive when palms face the camera (not each other)', () => {
   assert.equal(r.active, false);
 });
 
-test('scale grows on dominant axis as flat hands move apart', () => {
+test('ratchet: scale shrinks on dominant axis as flat hands move closer', () => {
   const g = new FlatPalmSquish();
   g.detect(twoFlatHandsFacing(), { x: 1, y: 1, z: 1 });
-  const wider = twoFlatHandsFacing();
-  for (const p of wider.landmarks[0]) p.x -= 0.1;
-  for (const p of wider.landmarks[1]) p.x += 0.1;
-  const r = g.detect(wider, { x: 1, y: 1, z: 1 });
+  // Squeeze hands closer together (decrease world distance).
+  const closer = twoFlatHandsFacing();
+  for (const p of closer.landmarks[0]) p.x += 0.1;
+  for (const p of closer.landmarks[1]) p.x -= 0.1;
+  const r = g.detect(closer, { x: 1, y: 1, z: 1 });
   assert.equal(r.active, true);
   assert.equal(r.axis, 'x');
-  assert.ok(r.scale.x > 1, `expected scale.x > 1, got ${r.scale.x}`);
+  assert.ok(r.scale.x < 1, `expected scale.x < 1, got ${r.scale.x}`);
   assert.equal(r.scale.y, 1);
   assert.equal(r.scale.z, 1);
+});
+
+test('ratchet: hands moving apart do not grow scale back', () => {
+  const g = new FlatPalmSquish();
+  g.detect(twoFlatHandsFacing(), { x: 1, y: 1, z: 1 });
+  // First compress.
+  const closer = twoFlatHandsFacing();
+  for (const p of closer.landmarks[0]) p.x += 0.1;
+  for (const p of closer.landmarks[1]) p.x -= 0.1;
+  const compressed = g.detect(closer, { x: 1, y: 1, z: 1 });
+  const compressedX = compressed.scale.x;
+  // Then move apart past the original baseline.
+  const wider = twoFlatHandsFacing();
+  for (const p of wider.landmarks[0]) p.x -= 0.2;
+  for (const p of wider.landmarks[1]) p.x += 0.2;
+  const r = g.detect(wider, { x: 1, y: 1, z: 1 });
+  assert.equal(r.active, true);
+  // Scale should stay at the compressed value — min didn't update.
+  assert.ok(Math.abs(r.scale.x - compressedX) < 1e-9, `expected scale.x still ${compressedX}, got ${r.scale.x}`);
 });
