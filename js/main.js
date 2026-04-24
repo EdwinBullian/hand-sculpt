@@ -194,6 +194,7 @@ function tick() {
     shape: scene.currentShapeName,
     fps: Math.round(fpsEMA),
     undoDepth: scene.sculptUndoDepth,
+    redoDepth: scene.sculptRedoDepth,
     mirror: mirrorAxis,
     brush: inflateMode ?? brushMode,
     palette: scene.paletteName,
@@ -277,7 +278,11 @@ window.addEventListener('keydown', (e) => {
   if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
   if (e.key === 'z' || e.key === 'Z') {
     if (scene.undoSculpt()) {
-      console.log('Sculpt undone. Remaining stack:', scene.sculptUndoDepth);
+      console.log('Sculpt undone. Undo remaining:', scene.sculptUndoDepth, 'Redo available:', scene.sculptRedoDepth);
+    }
+  } else if (e.key === 'y' || e.key === 'Y') {
+    if (scene.redoSculpt()) {
+      console.log('Sculpt redone. Undo remaining:', scene.sculptUndoDepth, 'Redo available:', scene.sculptRedoDepth);
     }
   } else if (e.key === 'm' || e.key === 'M') {
     mirrorAxis = nextMirrorAxis(mirrorAxis);

@@ -65,6 +65,7 @@ export class Scene {
     this._sculptOriginals = null;       // Map<vertexIndex, {x,y,z,contribs:[{weight,sx,sy,sz}]}>
     this._sculptInitialPinchLocal = null;
     this._sculptUndoStack = [];         // Float32Array snapshots of position attribute
+    this._sculptRedoStack = [];         // snapshots invalidated by undo, replayed by redo
     this._UNDO_LIMIT = 20;
     // Mirror sculpt: null | 'x' | 'y' | 'z'. When set, each sculpt deformation
     // is duplicated across that axis with the on-axis motion-delta flipped.
@@ -92,6 +93,7 @@ export class Scene {
     if (!geom) return;
     this.stopSculpt();
     this._sculptUndoStack.length = 0; // snapshots are tied to the old geometry
+    this._sculptRedoStack.length = 0;
     if (this.mesh) {
       this.scene.remove(this.mesh);
       if (this._geom) this._geom.dispose();
@@ -203,6 +205,8 @@ export class Scene {
     }
     if (primaryIdx < 0 || minD > this.sculptPickRadius) return false;
 
+    // New edit invalidates the forward-redo history.
+    this._sculptRedoStack.length = 0;
     // Snapshot the pre-mutation position buffer for undo. Float32Array.slice
     // returns a fresh buffer, decoupled from the live attribute.
     this._sculptUndoStack.push(pos.array.slice());
@@ -287,6 +291,8 @@ export class Scene {
     );
     if (region.length === 0) return false;
 
+    // New edit invalidates the forward-redo history.
+    this._sculptRedoStack.length = 0;
     // Snapshot for undo — one snapshot per stroke, same as drag.
     this._sculptUndoStack.push(pos.array.slice());
     if (this._sculptUndoStack.length > this._UNDO_LIMIT) {
@@ -370,6 +376,7 @@ export class Scene {
       this.sculptFalloffRadius,
     );
     if (region.length === 0) return false;
+    this._sculptRedoStack.length = 0;
     this._sculptUndoStack.push(pos.array.slice());
     if (this._sculptUndoStack.length > this._UNDO_LIMIT) this._sculptUndoStack.shift();
     this._sculptMode = sign > 0 ? 'inflate' : 'deflate';
@@ -413,19 +420,38 @@ export class Scene {
   // Returns true if an undo was applied, false if the stack was empty.
   undoSculpt() {
     if (!this._geom || this._sculptUndoStack.length === 0) return false;
-    const snapshot = this._sculptUndoStack.pop();
     const pos = this._geom.attributes.position;
+    // Save current state so redo can replay it.
+    this._sculptRedoStack.push(pos.array.slice());
+    const snapshot = this._sculptUndoStack.pop();
     pos.array.set(snapshot);
     pos.needsUpdate = true;
     applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
     this.stopSculpt();
-    // Render once so the undo shows even when the tick loop isn't running.
+    this.render();
+    return true;
+  }
+
+  redoSculpt() {
+    if (!this._geom || this._sculptRedoStack.length === 0) return false;
+    const pos = this._geom.attributes.position;
+    // Save current state to undo so the user can undo back through the redo.
+    this._sculptUndoStack.push(pos.array.slice());
+    const snapshot = this._sculptRedoStack.pop();
+    pos.array.set(snapshot);
+    pos.needsUpdate = true;
+    applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
+    this.stopSculpt();
     this.render();
     return true;
   }
 
   get sculptUndoDepth() {
     return this._sculptUndoStack.length;
+  }
+
+  get sculptRedoDepth() {
+    return this._sculptRedoStack.length;
   }
 
   resize() {

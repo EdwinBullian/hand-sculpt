@@ -61,14 +61,14 @@ export class Overlay {
     }
   }
 
-  drawHUD({ leftFingers, rightFingers, totalFingers, gesture, shape, fps, undoDepth, mirror, brush, palette }) {
+  drawHUD({ leftFingers, rightFingers, totalFingers, gesture, shape, fps, undoDepth, redoDepth, mirror, brush, palette }) {
     const lines = [
       `Left: ${leftFingers}  Right: ${rightFingers}  Total: ${totalFingers}`,
       `Gesture: ${gesture}`,
       `Shape: ${shape}`,
     ];
     if (fps !== undefined) lines.push(`FPS: ${fps}`);
-    if (undoDepth !== undefined && undoDepth > 0) lines.push(`Undo stack: ${undoDepth} (press Z)`);
+    if (undoDepth !== undefined && undoDepth > 0) lines.push(`Undo: ${undoDepth} (Z) ${redoDepth > 0 ? `Redo: ${redoDepth} (Y)` : ''}`.trimEnd());
     if (brush) lines.push(`Brush: ${brush.toUpperCase()} (press B)`);
     if (mirror) lines.push(`Mirror: ${mirror.toUpperCase()} (press M)`);
     if (palette) lines.push(`Palette: ${palette} (press C)`);
