@@ -1,41 +1,15 @@
-// SnapFreeze: detects the "pre-snap pose" — thumb tip (4) touching middle
-// finger tip (12) — with the *index finger extended* AND thumb not also
-// touching index (i.e. not a pinch). Held for `holdFrames` frames fires a
-// one-shot toggle.
+// SnapFreeze: detects the "pre-snap pose" — thumb tip touching middle finger
+// tip — held for `holdFrames` frames. Fires a one-shot toggle signal.
 //
-// The extra conditions rule out two common false positives:
-// - Fist: all fingertips bunch near the wrist, thumb+middle are close but
-//   index is curled — index-extended check fails.
-// - Thumb+index pinch (used by two-hand scale): thumb+middle can also be
-//   close since middle curls during pinch; we require thumb+index > threshold
-//   to reject this.
-
-function dist3d(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-}
-
-function distFromWrist(lm, i) {
-  return Math.hypot(lm[i].x - lm[0].x, lm[i].y - lm[0].y);
-}
-
-function isSnapPose(lm, touchThreshold, separationThreshold) {
-  if (!lm || lm.length < 21) return false;
-  const thumbMiddle = dist3d(lm[4], lm[12]);
-  if (thumbMiddle >= touchThreshold) return false;
-  const thumbIndex = dist3d(lm[4], lm[8]);
-  if (thumbIndex < separationThreshold) return false;
-  // Index extended: tip (8) farther from wrist than PIP (6).
-  const indexTipD = distFromWrist(lm, 8);
-  const indexPipD = distFromWrist(lm, 6);
-  if (indexTipD <= indexPipD) return false;
-  return true;
-}
+// Intentionally permissive: only checks thumb+middle proximity. Earlier stricter
+// versions (requiring index extended, thumb+index separated) made it too hard
+// to trigger in practice. Live feedback: "the snap is still not working… when
+// it was a lot more sensitive that was honestly when it worked best."
 
 export class SnapFreeze {
-  constructor(holdFrames = 3, touchThreshold = 0.08, separationThreshold = 0.04) {
+  constructor(holdFrames = 3, touchThreshold = 0.07) {
     this.holdFrames = holdFrames;
     this.touchThreshold = touchThreshold;
-    this.separationThreshold = separationThreshold;
     this.counter = 0;
     this.fired = false;
   }
@@ -47,7 +21,13 @@ export class SnapFreeze {
     }
     let snapping = false;
     for (const lm of results.landmarks) {
-      if (isSnapPose(lm, this.touchThreshold, this.separationThreshold)) {
+      if (!lm || lm.length < 21) continue;
+      const thumb = lm[4];
+      const middle = lm[12];
+      const dx = thumb.x - middle.x;
+      const dy = thumb.y - middle.y;
+      const dz = thumb.z - middle.z;
+      if (Math.hypot(dx, dy, dz) < this.touchThreshold) {
         snapping = true;
         break;
       }

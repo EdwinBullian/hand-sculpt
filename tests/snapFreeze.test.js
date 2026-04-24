@@ -10,48 +10,18 @@ function makeLandmarks(overrides) {
   return base;
 }
 
-// Snap pose: thumb tip + middle tip touching, index extended and NOT touching thumb.
+// Snap pose: thumb tip + middle tip touching.
 function snapPose() {
   return makeLandmarks({
-    0:  [0.5, 0.9, 0],   // wrist
-    4:  [0.48, 0.5, 0],  // thumb tip
-    6:  [0.55, 0.45, 0], // index PIP
-    8:  [0.57, 0.25, 0], // index tip (extended, far from thumb)
-    12: [0.49, 0.51, 0], // middle tip (near thumb tip — snap pose)
+    4:  [0.5, 0.5, 0],
+    12: [0.505, 0.505, 0],
   });
 }
 
-// Open hand: thumb and middle far apart.
 function openHand() {
   return makeLandmarks({
-    0:  [0.5, 0.9, 0],
     4:  [0.3, 0.5, 0],
-    6:  [0.55, 0.45, 0],
-    8:  [0.57, 0.25, 0],
     12: [0.7, 0.3, 0],
-  });
-}
-
-// Fist: thumb and middle tips both near wrist (touching-ish), index curled (tip near PIP).
-function fistPose() {
-  return makeLandmarks({
-    0:  [0.5, 0.9, 0],
-    4:  [0.5, 0.85, 0],  // thumb tip near wrist
-    6:  [0.52, 0.65, 0], // index PIP
-    8:  [0.52, 0.7, 0],  // index tip CLOSER to wrist than PIP (curled)
-    12: [0.5, 0.84, 0],  // middle tip near thumb tip
-  });
-}
-
-// Thumb+index pinch: thumb touching index (used by TwoHandPinchScale).
-// Middle curls naturally during a pinch so it can also be near the thumb.
-function pinchPose() {
-  return makeLandmarks({
-    0:  [0.5, 0.9, 0],
-    4:  [0.5, 0.4, 0],   // thumb tip
-    6:  [0.55, 0.5, 0],  // index PIP
-    8:  [0.51, 0.4, 0],  // index tip near thumb tip (pinch)
-    12: [0.495, 0.41, 0],// middle tip happens to be near thumb too
   });
 }
 
@@ -123,18 +93,4 @@ test('either of two hands in snap pose triggers', () => {
   assert.equal(g.detect(two).toggle, false);
   assert.equal(g.detect(two).toggle, false);
   assert.equal(g.detect(two).toggle, true);
-});
-
-test('does NOT fire on fist (thumb+middle touch but index curled)', () => {
-  const g = new SnapFreeze(3);
-  for (let i = 0; i < 20; i++) {
-    assert.equal(g.detect(resultsOne(fistPose())).toggle, false);
-  }
-});
-
-test('does NOT fire on pinch (thumb+index touching)', () => {
-  const g = new SnapFreeze(3);
-  for (let i = 0; i < 20; i++) {
-    assert.equal(g.detect(resultsOne(pinchPose())).toggle, false);
-  }
 });
