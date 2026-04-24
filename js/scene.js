@@ -1,4 +1,4 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js';
+import * as THREE from 'three';
 import { createShape } from './shapes.js';
 
 // Manages the Three.js scene, camera, renderer, and the currently-displayed mesh.
