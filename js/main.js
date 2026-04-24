@@ -11,6 +11,7 @@ import { FourFingerPinchStretch } from './gestures/fourFingerPinchStretch.js';
 import { FingerCountHold } from './gestures/fingerCountHold.js';
 import { BothBacksReset } from './gestures/bothBacksReset.js';
 import { SnapFreeze } from './gestures/snapFreeze.js';
+import { RotationAccumulator } from './rotationAccumulator.js';
 
 const videoEl = document.getElementById('webcam');
 const overlayCanvas = document.getElementById('overlay');
@@ -21,7 +22,8 @@ const tracker = new Tracker();
 const overlay = new Overlay(overlayCanvas);
 const scene = new Scene(sceneCanvas);
 const singleHandPose = new SingleHandPose();
-const smoother = new PoseSmoother(1.0);
+const smoother = new PoseSmoother(0.85);
+const rotationAccum = new RotationAccumulator();
 const pinchScale = new TwoHandPinchScale();
 const squish = new FlatPalmSquish();
 const stretch = new FourFingerPinchStretch();
@@ -60,6 +62,7 @@ function resetAll() {
   pinchScale.reset();
   squish.reset();
   stretch.reset();
+  rotationAccum.reset();
   scene.reset();
 }
 
@@ -110,16 +113,22 @@ function tick() {
         if (sq.active) {
           gestureLabel = (frozen ? 'FROZEN+SQUISH-' : 'SQUISH-') + sq.axis.toUpperCase();
           scene.setScale(sq.scale);
-        } else if (frozen) {
-          gestureLabel = 'FROZEN';
         } else {
           const pose = singleHandPose.detect(results);
           if (pose.active) {
-            gestureLabel = pose.handCount === 2 ? 'FORCE-2' : 'FORCE-1';
-            const smoothed = smoother.update(pose.position, pose.quaternion);
-            scene.setPose(smoothed);
+            const cubeOrientation = rotationAccum.onActive(pose.quaternion);
+            const smoothed = smoother.update(pose.position, cubeOrientation);
+            if (frozen) {
+              gestureLabel = 'FROZEN';
+              // Only orientation updates while frozen; position stays put.
+              scene.setPose({ quaternion: smoothed.quaternion });
+            } else {
+              gestureLabel = pose.handCount === 2 ? 'FORCE-2' : 'FORCE-1';
+              scene.setPose(smoothed);
+            }
           } else {
-            gestureLabel = 'IDLE';
+            rotationAccum.onInactive();
+            gestureLabel = frozen ? 'FROZEN' : 'IDLE';
           }
         }
       }
@@ -134,6 +143,8 @@ function tick() {
         smoother.reset();
         pinchScale.reset();
         squish.reset();
+        stretch.reset();
+        rotationAccum.reset();
       }
     }
   }
