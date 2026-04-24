@@ -63,7 +63,7 @@ export class Overlay {
     }
   }
 
-  drawHUD({ leftFingers, rightFingers, totalFingers, gesture, shape, fps, undoDepth, redoDepth, mirror, brush, palette }) {
+  drawHUD({ leftFingers, rightFingers, totalFingers, gesture, shape, fps, undoDepth, redoDepth, mirror, brush, palette, bloom }) {
     const lines = [
       `Left: ${leftFingers}  Right: ${rightFingers}  Total: ${totalFingers}`,
       `Gesture: ${gesture}`,
@@ -74,6 +74,7 @@ export class Overlay {
     if (brush) lines.push(`Brush: ${brush.toUpperCase()} (press B)`);
     if (mirror) lines.push(`Mirror: ${mirror.toUpperCase()} (press M)`);
     if (palette) lines.push(`Palette: ${palette} (press C)`);
+    if (bloom) lines.push('Bloom: ON — webcam hidden (press G)');
     const pad = 8;
     const lh = 22;
     this.ctx.font = '14px ui-monospace, Menlo, Consolas, monospace';

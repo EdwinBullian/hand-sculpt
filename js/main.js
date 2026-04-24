@@ -209,6 +209,7 @@ function tick() {
     mirror: mirrorAxis,
     brush: inflateMode ?? brushMode,
     palette: scene.paletteName,
+    bloom: scene.bloomEnabled,
   });
 
   scene.render();
@@ -265,10 +266,11 @@ wireSlider('s-pick',    'v-pick',    (v) => { scene.sculptPickRadius = v; });
 wireSlider('s-falloff', 'v-falloff', (v) => { scene.sculptFalloffRadius = v; });
 wireSlider('s-sn',      'v-sn',      (v) => { scene.smoothNeighborRadius = v; });
 wireSlider('s-ss',      'v-ss',      (v) => { scene.smoothStrength = v; });
+wireSlider('s-bloom',   'v-bloom',   (v) => { scene.setBloomStrength(v); });
 
 document.getElementById('s-reset').addEventListener('click', () => {
   const defaults = {
-    's-alpha': 0.85, 's-pick': 0.50, 's-falloff': 0.80, 's-sn': 0.25, 's-ss': 0.15,
+    's-alpha': 0.85, 's-pick': 0.50, 's-falloff': 0.80, 's-sn': 0.25, 's-ss': 0.15, 's-bloom': 1.50,
   };
   for (const [id, value] of Object.entries(defaults)) {
     const el = document.getElementById(id);
@@ -314,6 +316,8 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'c' || e.key === 'C') {
     scene.cyclePalette();
     console.log('Palette:', scene.paletteName);
+  } else if (e.key === 'g' || e.key === 'G') {
+    scene.toggleBloom().then(on => console.log('Bloom:', on ? 'on' : 'off'));
   } else if (e.key === 's' || e.key === 'S') {
     overlay.showSkeleton = !overlay.showSkeleton;
     console.log('Skeleton:', overlay.showSkeleton ? 'on' : 'off');

@@ -83,6 +83,11 @@ export class Scene {
     this.smoothNeighborRadius = DEFAULT_SMOOTH_NEIGHBOR_RADIUS;
     this.smoothStrength = DEFAULT_SMOOTH_STRENGTH;
     this.inflateStepSize = DEFAULT_INFLATE_STEP_SIZE;
+    // Bloom / post-processing state. Lazily initialised on first G press so
+    // the three postprocessing CDN files only load when the user wants bloom.
+    this._bloomEnabled = false;
+    this._composer = null;   // EffectComposer instance
+    this._bloomPass = null;  // UnrealBloomPass — kept for setBloomStrength()
     this.currentShapeName = 'cube';
     this.setShape(this.currentShapeName);
     this.resize();
@@ -463,6 +468,49 @@ export class Scene {
     this.mesh.quaternion.premultiply(q);
   }
 
+  // Lazily creates the EffectComposer + UnrealBloomPass via dynamic import so
+  // the three postprocessing CDN files only load when bloom is first toggled on.
+  async _initComposer() {
+    if (this._composer) return;
+    const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }] = await Promise.all([
+      import('three/addons/postprocessing/EffectComposer.js'),
+      import('three/addons/postprocessing/RenderPass.js'),
+      import('three/addons/postprocessing/UnrealBloomPass.js'),
+    ]);
+    const w = this.canvas.clientWidth || 1;
+    const h = this.canvas.clientHeight || 1;
+    this._composer = new EffectComposer(this.renderer);
+    this._composer.addPass(new RenderPass(this.scene, this.camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 1.5, 0.4, 0.1);
+    this._bloomPass = bloom;
+    this._composer.addPass(bloom);
+  }
+
+  // Toggle bloom on/off. Returns a Promise<boolean> (new state) so callers can
+  // react after the async CDN load completes on first enable.
+  async toggleBloom() {
+    if (!this._bloomEnabled) {
+      await this._initComposer();
+      this._bloomEnabled = true;
+      // Opaque dark background while bloom is active (EffectComposer fills the
+      // canvas; transparent alpha would let the webcam bleed through incorrectly).
+      this.renderer.setClearColor(0x0e0e12, 1);
+    } else {
+      this._bloomEnabled = false;
+      this.renderer.setClearColor(0x000000, 0);
+    }
+    this.render();
+    return this._bloomEnabled;
+  }
+
+  get bloomEnabled() {
+    return this._bloomEnabled;
+  }
+
+  setBloomStrength(strength) {
+    if (this._bloomPass) this._bloomPass.strength = strength;
+  }
+
   resize() {
     const w = this.canvas.clientWidth || 1;
     const h = this.canvas.clientHeight || 1;
@@ -470,9 +518,14 @@ export class Scene {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    if (this._composer) this._composer.setSize(w, h);
   }
 
   render() {
-    this.renderer.render(this.scene, this.camera);
+    if (this._bloomEnabled && this._composer) {
+      this._composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 }
