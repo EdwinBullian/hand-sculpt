@@ -52,6 +52,8 @@ export class Scene {
     this._sculpting = false;
     this._sculptOriginals = null;       // Map<vertexIndex, {x,y,z,weight}>
     this._sculptInitialPinchLocal = null;
+    this._sculptUndoStack = [];         // Float32Array snapshots of position attribute
+    this._UNDO_LIMIT = 20;
     this.currentShapeName = 'cube';
     this.setShape(this.currentShapeName);
     this.resize();
@@ -61,6 +63,7 @@ export class Scene {
     const geom = createShape(name);
     if (!geom) return;
     this.stopSculpt();
+    this._sculptUndoStack.length = 0; // snapshots are tied to the old geometry
     if (this.mesh) {
       this.scene.remove(this.mesh);
       if (this._geom) this._geom.dispose();
@@ -136,6 +139,13 @@ export class Scene {
     }
     if (primaryIdx < 0 || minD > SCULPT_PICK_RADIUS) return false;
 
+    // Snapshot the pre-mutation position buffer for undo. Float32Array.slice
+    // returns a fresh buffer, decoupled from the live attribute.
+    this._sculptUndoStack.push(pos.array.slice());
+    if (this._sculptUndoStack.length > this._UNDO_LIMIT) {
+      this._sculptUndoStack.shift();
+    }
+
     // Build falloff map in LOCAL space (so it stays valid when the cube rotates).
     const px = pos.getX(primaryIdx);
     const py = pos.getY(primaryIdx);
@@ -196,6 +206,23 @@ export class Scene {
     this._sculpting = false;
     this._sculptOriginals = null;
     this._sculptInitialPinchLocal = null;
+  }
+
+  // Revert the most recent sculpt (restore the snapshot pushed in startSculpt).
+  // Returns true if an undo was applied, false if the stack was empty.
+  undoSculpt() {
+    if (!this._geom || this._sculptUndoStack.length === 0) return false;
+    const snapshot = this._sculptUndoStack.pop();
+    const pos = this._geom.attributes.position;
+    pos.array.set(snapshot);
+    pos.needsUpdate = true;
+    applyVertexGradient(this._geom);
+    this.stopSculpt();
+    return true;
+  }
+
+  get sculptUndoDepth() {
+    return this._sculptUndoStack.length;
   }
 
   resize() {

@@ -37,6 +37,8 @@ const SHAPES_BY_COUNT = [null, 'sphere', 'cube', 'pyramid', 'cylinder', 'torus']
 
 let running = false;
 let frozen = false;
+let lastFrameTime = 0;
+let fpsEMA = 0;
 
 function syncCanvasSizes() {
   const rect = overlayCanvas.getBoundingClientRect();
@@ -93,6 +95,11 @@ function tryHandleSculpt(results) {
 function tick() {
   if (!running) return;
   const t = performance.now();
+  if (lastFrameTime > 0) {
+    const instantFPS = 1000 / Math.max(1, t - lastFrameTime);
+    fpsEMA = fpsEMA === 0 ? instantFPS : 0.1 * instantFPS + 0.9 * fpsEMA;
+  }
+  lastFrameTime = t;
   const results = tracker.detect(videoEl, t);
 
   overlay.clear();
@@ -181,6 +188,8 @@ function tick() {
     totalFingers,
     gesture: gestureLabel,
     shape: scene.currentShapeName,
+    fps: Math.round(fpsEMA),
+    undoDepth: scene.sculptUndoDepth,
   });
 
   scene.render();
@@ -216,6 +225,15 @@ document.getElementById('start').addEventListener('click', start);
 document.getElementById('stop').addEventListener('click', stop);
 document.getElementById('reset').addEventListener('click', reset);
 window.addEventListener('resize', syncCanvasSizes);
+
+// Z → undo last sculpt (pops the snapshot stack on the scene).
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'z' || e.key === 'Z') {
+    if (scene.undoSculpt()) {
+      console.log('Sculpt undone. Remaining stack:', scene.sculptUndoDepth);
+    }
+  }
+});
 
 syncCanvasSizes();
 scene.render();

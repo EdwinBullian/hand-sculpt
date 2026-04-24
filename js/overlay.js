@@ -61,17 +61,19 @@ export class Overlay {
     }
   }
 
-  drawHUD({ leftFingers, rightFingers, totalFingers, gesture, shape }) {
+  drawHUD({ leftFingers, rightFingers, totalFingers, gesture, shape, fps, undoDepth }) {
     const lines = [
       `Left: ${leftFingers}  Right: ${rightFingers}  Total: ${totalFingers}`,
       `Gesture: ${gesture}`,
       `Shape: ${shape}`,
     ];
+    if (fps !== undefined) lines.push(`FPS: ${fps}`);
+    if (undoDepth !== undefined && undoDepth > 0) lines.push(`Undo stack: ${undoDepth} (press Z)`);
     const pad = 8;
     const lh = 22;
     this.ctx.font = '14px ui-monospace, Menlo, Consolas, monospace';
     this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    this.ctx.fillRect(pad, pad, 260, lh * lines.length + pad);
+    this.ctx.fillRect(pad, pad, 280, lh * lines.length + pad);
     this.ctx.fillStyle = '#ffffff';
     for (let i = 0; i < lines.length; i++) {
       this.ctx.fillText(lines[i], pad + 8, pad + 16 + i * lh);
