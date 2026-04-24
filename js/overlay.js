@@ -13,6 +13,7 @@ export class Overlay {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.showSkeleton = true;
   }
 
   resize(w, h) {
@@ -37,6 +38,7 @@ export class Overlay {
   }
 
   drawHands(handsLandmarks) {
+    if (!this.showSkeleton) return;
     const w = this.cssWidth;
     const h = this.cssHeight;
     for (const lm of handsLandmarks) {

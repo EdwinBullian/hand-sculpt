@@ -314,6 +314,9 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'c' || e.key === 'C') {
     scene.cyclePalette();
     console.log('Palette:', scene.paletteName);
+  } else if (e.key === 's' || e.key === 'S') {
+    overlay.showSkeleton = !overlay.showSkeleton;
+    console.log('Skeleton:', overlay.showSkeleton ? 'on' : 'off');
   } else if (e.key === '`' || e.key === '~') {
     const nowHidden = settingsPanel.classList.toggle('hidden');
     settingsPanel.setAttribute('aria-hidden', String(nowHidden));
