@@ -23,6 +23,11 @@ export class Tracker {
       },
       runningMode: 'VIDEO',
       numHands: 2,
+      // Lowered from defaults (0.5) for better resilience when hand rotates
+      // far from camera-facing orientation (e.g. mid-gesture palm flipping).
+      minHandDetectionConfidence: 0.3,
+      minHandPresenceConfidence: 0.3,
+      minTrackingConfidence: 0.3,
     });
   }
 
