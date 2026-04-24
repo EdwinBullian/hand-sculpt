@@ -2,7 +2,32 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.m
 import { createShape } from './shapes.js';
 
 // Manages the Three.js scene, camera, renderer, and the currently-displayed mesh.
-// One shape at a time, wireframe material only.
+// Each shape is a Group containing:
+//   - a filled mesh with a vertical gray→white gradient (via vertex colors)
+//   - a wireframe mesh as a child (inherits the group's transforms)
+// The wireframe stays on top so mesh edges are always visible.
+
+function applyVertexGradient(geom) {
+  const pos = geom.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  let minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const range = maxY - minY || 1;
+  for (let i = 0; i < pos.count; i++) {
+    const t = (pos.getY(i) - minY) / range;
+    // 0.35 (mid-gray) at the bottom → 1.0 (white) at the top.
+    const c = 0.35 + t * 0.65;
+    colors[i * 3]     = c;
+    colors[i * 3 + 1] = c;
+    colors[i * 3 + 2] = c;
+  }
+  geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+}
+
 export class Scene {
   constructor(canvas) {
     this.canvas = canvas;
@@ -13,7 +38,10 @@ export class Scene {
     this.camera.position.set(0, 0, 5);
 
     this.scene = new THREE.Scene();
-    this.mesh = null;
+    this.mesh = null;           // Group holding fill + wireframe
+    this._fillMat = null;
+    this._wireMat = null;
+    this._geom = null;
     this.currentShapeName = 'cube';
     this.setShape(this.currentShapeName);
     this.resize();
@@ -24,11 +52,25 @@ export class Scene {
     if (!geom) return;
     if (this.mesh) {
       this.scene.remove(this.mesh);
-      this.mesh.geometry.dispose();
-      this.mesh.material.dispose();
+      if (this._geom) this._geom.dispose();
+      if (this._fillMat) this._fillMat.dispose();
+      if (this._wireMat) this._wireMat.dispose();
     }
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true });
-    this.mesh = new THREE.Mesh(geom, mat);
+    applyVertexGradient(geom);
+    const fillMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    const wireMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.75,
+    });
+    const fill = new THREE.Mesh(geom, fillMat);
+    const wire = new THREE.Mesh(geom, wireMat);
+    fill.add(wire); // wireframe inherits transforms from fill mesh
+    this.mesh = fill;
+    this._fillMat = fillMat;
+    this._wireMat = wireMat;
+    this._geom = geom;
     this.scene.add(this.mesh);
     this.currentShapeName = name;
   }
