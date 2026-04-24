@@ -126,26 +126,62 @@ export class Scene {
   }
 
   setShape(name) {
-    if (this._shapeAnim) return; // don't interrupt an in-progress transition
-    if (!createShape(name)) return;
-    this._shapeAnim = { phase: 'out', pendingName: name, startT: performance.now(), dur: 160 };
+    if (this._shapeAnim) return;
+    const geom = createShape(name);
+    if (!geom) return;
+    this.stopSculpt();
+    this._sculptUndoStack.length = 0;
+    this._sculptRedoStack.length = 0;
+    applyVertexGradient(geom, PALETTES[this.paletteIndex]);
+    const newFillMat = new THREE.MeshBasicMaterial({
+      vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0,
+    });
+    const newWireMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, wireframe: true, transparent: true, opacity: 0,
+    });
+    const newFill = new THREE.Mesh(geom, newFillMat);
+    newFill.add(new THREE.Mesh(geom, newWireMat));
+    if (this.mesh) {
+      newFill.position.copy(this.mesh.position);
+      newFill.quaternion.copy(this.mesh.quaternion);
+      newFill.scale.copy(this.mesh.scale);
+      this._fillMat.transparent = true;
+    }
+    this.scene.add(newFill);
+    const oldMesh = this.mesh;
+    const oldFillMat = this._fillMat;
+    const oldWireMat = this._wireMat;
+    const oldGeom = this._geom;
+    this.mesh = newFill;
+    this._fillMat = newFillMat;
+    this._wireMat = newWireMat;
+    this._geom = geom;
+    this.currentShapeName = name;
+    this._shapeAnim = { oldMesh, oldFillMat, oldWireMat, oldGeom, startT: performance.now(), dur: 350 };
   }
 
   _tickShapeAnim() {
-    if (!this._shapeAnim || !this.mesh) return;
-    const { phase, pendingName, startT, dur } = this._shapeAnim;
+    if (!this._shapeAnim) return;
+    const { oldMesh, oldFillMat, oldWireMat, oldGeom, startT, dur } = this._shapeAnim;
     const t = Math.min(1, (performance.now() - startT) / dur);
-    if (phase === 'out') {
-      this.mesh.scale.setScalar(1 - t);
-      if (t >= 1) {
-        this._doSetShape(pendingName);
-        this._shapeAnim = { phase: 'in', pendingName, startT: performance.now(), dur };
+    const eased = 1 - Math.pow(1 - t, 2);
+    if (oldMesh) {
+      oldFillMat.opacity = 1 - eased;
+      if (oldMesh.children[0]) oldMesh.children[0].material.opacity = (1 - eased) * 0.75;
+    }
+    this._fillMat.opacity = eased;
+    this._wireMat.opacity = eased * 0.75;
+    if (t >= 1) {
+      if (oldMesh) {
+        this.scene.remove(oldMesh);
+        oldGeom.dispose();
+        oldFillMat.dispose();
+        oldWireMat.dispose();
       }
-    } else {
-      // Ease in with a slight overshoot (back ease)
-      const s = t < 1 ? 1 - Math.pow(1 - t, 3) : 1;
-      this.mesh.scale.setScalar(s);
-      if (t >= 1) this._shapeAnim = null;
+      this._fillMat.transparent = false;
+      this._fillMat.opacity = 1;
+      this._wireMat.opacity = 0.75;
+      this._shapeAnim = null;
     }
   }
 
@@ -158,7 +194,7 @@ export class Scene {
   }
 
   setScale(scale) {
-    if (!this.mesh || !scale || this._shapeAnim) return;
+    if (!this.mesh || !scale) return;
     this.mesh.scale.set(scale.x, scale.y, scale.z);
   }
 

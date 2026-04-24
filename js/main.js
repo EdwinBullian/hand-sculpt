@@ -9,7 +9,6 @@ import { TwoHandPinchScale } from './gestures/twoHandPinchScale.js';
 import { FlatPalmSquish } from './gestures/flatPalmSquish.js';
 import { FourFingerPinchStretch } from './gestures/fourFingerPinchStretch.js';
 import { FingerCountHold } from './gestures/fingerCountHold.js';
-import { BothBacksReset } from './gestures/bothBacksReset.js';
 import { SnapFreeze } from './gestures/snapFreeze.js';
 import { VertexSculpt } from './gestures/vertexSculpt.js';
 import { RotationAccumulator } from './rotationAccumulator.js';
@@ -33,7 +32,6 @@ const pinchScale = new TwoHandPinchScale();
 const squish = new FlatPalmSquish();
 const stretch = new FourFingerPinchStretch();
 const fingerHold = new FingerCountHold(45, 0.04);
-const bothBacks = new BothBacksReset();
 const snapFreeze = new SnapFreeze();
 const vertexSculpt = new VertexSculpt();
 const twoHandY = new TwoHandYRotation();
@@ -128,11 +126,7 @@ function tick() {
 
   let gestureLabel;
 
-  if (bothBacks.detect(results).active) {
-    gestureLabel = 'RESET';
-    resetAll();
-    frozen = false;
-  } else if (tryHandleSculpt(results)) {
+  if (tryHandleSculpt(results)) {
     gestureLabel = 'SCULPT';
   } else {
     const scaleNow = currentMeshScale();

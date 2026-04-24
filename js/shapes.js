@@ -16,10 +16,13 @@ export function createShape(name) {
       // 4 segments per axis → 25 vertices per face (dense grid for sculpting).
       g = new THREE.BoxGeometry(1.5, 1.5, 1.5, 4, 4, 4);
       break;
-    case 'pyramid':
-      // 4 radial segments = square base; 6 height segments for sculptable sides.
-      g = new THREE.ConeGeometry(1, 1.8, 4, 6);
-      break;
+    case 'pyramid': {
+      // mergeVertices corrupts winding order on 4-segment cones (alternating
+      // transparent faces). Return early with raw geometry instead.
+      const pg = new THREE.ConeGeometry(1, 1.8, 4, 6);
+      pg.computeVertexNormals();
+      return pg;
+    }
     case 'cylinder':
       g = new THREE.CylinderGeometry(1, 1, 1.8, 32, 6);
       break;

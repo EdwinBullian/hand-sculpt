@@ -7,11 +7,13 @@
 // it was a lot more sensitive that was honestly when it worked best."
 
 export class SnapFreeze {
-  constructor(holdFrames = 3, touchThreshold = 0.07) {
+  constructor(holdFrames = 3, touchThreshold = 0.07, cooldownMs = 1500) {
     this.holdFrames = holdFrames;
     this.touchThreshold = touchThreshold;
+    this.cooldownMs = cooldownMs;
     this.counter = 0;
     this.fired = false;
+    this._lastToggleTime = -Infinity;
   }
 
   detect(results) {
@@ -37,8 +39,11 @@ export class SnapFreeze {
       return { toggle: false };
     }
     this.counter++;
-    if (!this.fired && this.counter >= this.holdFrames) {
+    const now = performance.now();
+    if (!this.fired && this.counter >= this.holdFrames &&
+        now - this._lastToggleTime >= this.cooldownMs) {
       this.fired = true;
+      this._lastToggleTime = now;
       return { toggle: true };
     }
     return { toggle: false };

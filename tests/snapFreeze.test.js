@@ -50,7 +50,7 @@ test('does not re-fire while snap pose held', () => {
 });
 
 test('can fire again after snap pose is released and re-entered', () => {
-  const g = new SnapFreeze(3);
+  const g = new SnapFreeze(3, 0.07, 0); // cooldownMs=0 so test isn't time-dependent
   g.detect(resultsOne(snapPose()));
   g.detect(resultsOne(snapPose()));
   g.detect(resultsOne(snapPose())); // first fire
