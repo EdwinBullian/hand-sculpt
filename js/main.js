@@ -42,6 +42,7 @@ let lastFrameTime = 0;
 let fpsEMA = 0;
 let mirrorAxis = null;  // null | 'x' | 'y' | 'z' — cycled by the M key
 let brushMode = 'drag'; // 'drag' | 'smooth' — cycled by the B key
+let inflateMode = null;  // null | 'inflate' | 'deflate' — cycled by the I key; overrides brushMode when set
 
 function syncCanvasSizes() {
   const rect = overlayCanvas.getBoundingClientRect();
@@ -194,7 +195,7 @@ function tick() {
     fps: Math.round(fpsEMA),
     undoDepth: scene.sculptUndoDepth,
     mirror: mirrorAxis,
-    brush: brushMode,
+    brush: inflateMode ?? brushMode,
     palette: scene.paletteName,
   });
 
@@ -283,9 +284,17 @@ window.addEventListener('keydown', (e) => {
     scene.setMirrorAxis(mirrorAxis);
     console.log('Mirror axis:', mirrorAxis ?? 'off');
   } else if (e.key === 'b' || e.key === 'B') {
-    brushMode = brushMode === 'drag' ? 'smooth' : 'drag';
-    scene.setBrushMode(brushMode);
-    console.log('Brush:', brushMode);
+    if (inflateMode === null) {
+      brushMode = brushMode === 'drag' ? 'smooth' : 'drag';
+      scene.setBrushMode(brushMode);
+      console.log('Brush:', brushMode);
+    }
+  } else if (e.key === 'i' || e.key === 'I') {
+    if (inflateMode === null) inflateMode = 'inflate';
+    else if (inflateMode === 'inflate') inflateMode = 'deflate';
+    else inflateMode = null;
+    scene.setBrushMode(inflateMode ?? brushMode);
+    console.log('Inflate:', inflateMode ?? 'off');
   } else if (e.key === 'c' || e.key === 'C') {
     scene.cyclePalette();
     console.log('Palette:', scene.paletteName);

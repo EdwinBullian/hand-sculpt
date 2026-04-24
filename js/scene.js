@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createShape } from './shapes.js';
 import { mirrorPoint, mirrorDeltaSign } from './mirror.js';
 import { brushIndicesInRegion, smoothStep } from './smooth.js';
+import { inflateStep } from './inflate.js';
 import { PALETTES, cyclePaletteIndex, paletteColorAt } from './palettes.js';
 
 // Manages the Three.js scene, camera, renderer, and the currently-displayed mesh.
@@ -41,6 +42,9 @@ export const DEFAULT_SCULPT_FALLOFF_RADIUS = 0.8;
 // the local mean — too small = ineffective, too large = shape collapses.
 export const DEFAULT_SMOOTH_NEIGHBOR_RADIUS = 0.25;
 export const DEFAULT_SMOOTH_STRENGTH = 0.15;
+// Inflate / deflate brush: per-frame push distance in local mesh units.
+// Small values (0.003–0.01) give a slow continuous push; larger values stamp harder.
+export const DEFAULT_INFLATE_STEP_SIZE = 0.005;
 
 export class Scene {
   constructor(canvas) {
@@ -77,6 +81,7 @@ export class Scene {
     this.sculptFalloffRadius = DEFAULT_SCULPT_FALLOFF_RADIUS;
     this.smoothNeighborRadius = DEFAULT_SMOOTH_NEIGHBOR_RADIUS;
     this.smoothStrength = DEFAULT_SMOOTH_STRENGTH;
+    this.inflateStepSize = DEFAULT_INFLATE_STEP_SIZE;
     this.currentShapeName = 'cube';
     this.setShape(this.currentShapeName);
     this.resize();
@@ -168,6 +173,8 @@ export class Scene {
   // too far from any vertex / brush region is empty.
   startSculpt(worldPoint) {
     if (this.brushMode === 'smooth') return this._startSmooth(worldPoint);
+    if (this.brushMode === 'inflate') return this._startInflate(worldPoint, 1);
+    if (this.brushMode === 'deflate') return this._startInflate(worldPoint, -1);
     return this._startDrag(worldPoint);
   }
 
@@ -294,6 +301,7 @@ export class Scene {
   updateSculpt(worldPoint) {
     if (!this._sculpting || !this._geom || !this.mesh) return;
     if (this._sculptMode === 'smooth') return this._updateSmooth(worldPoint);
+    if (this._sculptMode === 'inflate' || this._sculptMode === 'deflate') return this._updateInflate(worldPoint);
     return this._updateDrag(worldPoint);
   }
 
@@ -340,6 +348,54 @@ export class Scene {
       const mRegion = brushIndicesInRegion(pos.array, mCenter, this.sculptFalloffRadius);
       if (mRegion.length > 0) {
         smoothStep(pos.array, mRegion, this.smoothNeighborRadius, this.smoothStrength);
+      }
+    }
+    pos.needsUpdate = true;
+    applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
+  }
+
+  // Inflate/deflate: push vertices along their surface normals each frame.
+  // sign is encoded in _sculptMode ('inflate' → +1, 'deflate' → −1).
+  _startInflate(worldPoint, sign) {
+    if (!this._geom || !this.mesh) return false;
+    const pos = this._geom.attributes.position;
+    this.mesh.updateMatrixWorld();
+    const invMat = new THREE.Matrix4().copy(this.mesh.matrixWorld).invert();
+    const initLocal = new THREE.Vector3(worldPoint.x, worldPoint.y, worldPoint.z)
+      .applyMatrix4(invMat);
+    this._geom.computeVertexNormals();
+    const region = brushIndicesInRegion(
+      pos.array,
+      { x: initLocal.x, y: initLocal.y, z: initLocal.z },
+      this.sculptFalloffRadius,
+    );
+    if (region.length === 0) return false;
+    this._sculptUndoStack.push(pos.array.slice());
+    if (this._sculptUndoStack.length > this._UNDO_LIMIT) this._sculptUndoStack.shift();
+    this._sculptMode = sign > 0 ? 'inflate' : 'deflate';
+    this._sculpting = true;
+    return true;
+  }
+
+  _updateInflate(worldPoint) {
+    const pos = this._geom.attributes.position;
+    this.mesh.updateMatrixWorld();
+    const invMat = new THREE.Matrix4().copy(this.mesh.matrixWorld).invert();
+    const nowLocal = new THREE.Vector3(worldPoint.x, worldPoint.y, worldPoint.z)
+      .applyMatrix4(invMat);
+    const center = { x: nowLocal.x, y: nowLocal.y, z: nowLocal.z };
+    this._geom.computeVertexNormals();
+    const norm = this._geom.attributes.normal;
+    const sign = this._sculptMode === 'deflate' ? -1 : 1;
+    const region = brushIndicesInRegion(pos.array, center, this.sculptFalloffRadius);
+    if (region.length > 0) {
+      inflateStep(pos.array, norm.array, region, this.inflateStepSize, sign);
+    }
+    if (this.mirrorAxis) {
+      const mCenter = mirrorPoint(center, this.mirrorAxis);
+      const mRegion = brushIndicesInRegion(pos.array, mCenter, this.sculptFalloffRadius);
+      if (mRegion.length > 0) {
+        inflateStep(pos.array, norm.array, mRegion, this.inflateStepSize, sign);
       }
     }
     pos.needsUpdate = true;
