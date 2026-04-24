@@ -59,3 +59,10 @@ See [docs/design.md](docs/design.md) for the full design spec and
 | `phase-3-two-hand-and-shape-swap` | Pinch scale, flat-palm squish, N-fingers-held shape swap |
 | `phase-4-vertex-sculpt` | One-hand-pinch-at-surface vertex-drag sculpting with soft falloff |
 | `phase-5-polish` | Gesture refinements: ratchet compress/expand, delta rotation accumulation, freeze locks position only, snap-freeze toggle, gradient fill, tuned tracking |
+
+## Ideas / Future
+
+Parked for later — not designed yet, just saved here so they don't get lost.
+
+- **Darts** — mini-game using hand flick velocity as a throw mechanic; Force-1 gesture as throw input, dart flies toward a board target in the scene
+- **Ping pong** — mini-game using hand position as a paddle; object becomes the ball, bounce physics, keep-the-rally-going mode
