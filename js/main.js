@@ -14,6 +14,7 @@ import { SnapFreeze } from './gestures/snapFreeze.js';
 import { VertexSculpt } from './gestures/vertexSculpt.js';
 import { RotationAccumulator } from './rotationAccumulator.js';
 import { nextMirrorAxis } from './mirror.js';
+import { TwoHandYRotation } from './gestures/twoHandYRotation.js';
 
 const videoEl = document.getElementById('webcam');
 const overlayCanvas = document.getElementById('overlay');
@@ -33,6 +34,7 @@ const fingerHold = new FingerCountHold(45, 0.04);
 const bothBacks = new BothBacksReset();
 const snapFreeze = new SnapFreeze();
 const vertexSculpt = new VertexSculpt();
+const twoHandY = new TwoHandYRotation();
 
 const SHAPES_BY_COUNT = [null, 'sphere', 'cube', 'pyramid', 'cylinder', 'torus'];
 
@@ -71,6 +73,7 @@ function resetAll() {
   squish.reset();
   stretch.reset();
   rotationAccum.reset();
+  twoHandY.reset();
   scene.reset();
 }
 
@@ -151,21 +154,29 @@ function tick() {
           gestureLabel = (frozen ? 'FROZEN+SQUISH-' : 'SQUISH-') + sq.axis.toUpperCase();
           scene.setScale(sq.scale);
         } else {
-          const pose = singleHandPose.detect(results);
-          if (pose.active) {
-            const cubeOrientation = rotationAccum.onActive(pose.quaternion);
-            const smoothed = smoother.update(pose.position, cubeOrientation);
-            if (frozen) {
-              gestureLabel = 'FROZEN';
-              // Only orientation updates while frozen; position stays put.
-              scene.setPose({ quaternion: smoothed.quaternion });
-            } else {
-              gestureLabel = pose.handCount === 2 ? 'FORCE-2' : 'FORCE-1';
-              scene.setPose(smoothed);
-            }
+          const yRot = twoHandY.detect(results);
+          if (yRot.active) {
+            // Turntable Y-rotation: thumbs touching + both palms toward camera.
+            // This intercepts before FORCE-2 since it's a subset of that pose.
+            gestureLabel = frozen ? 'FROZEN+Y-ROTATE' : 'Y-ROTATE';
+            if (!frozen && yRot.deltaY !== 0) scene.rotateAroundWorldY(yRot.deltaY);
+            rotationAccum.onInactive(); // don't let delta accumulator drift
           } else {
-            rotationAccum.onInactive();
-            gestureLabel = frozen ? 'FROZEN' : 'IDLE';
+            const pose = singleHandPose.detect(results);
+            if (pose.active) {
+              const cubeOrientation = rotationAccum.onActive(pose.quaternion);
+              const smoothed = smoother.update(pose.position, cubeOrientation);
+              if (frozen) {
+                gestureLabel = 'FROZEN';
+                scene.setPose({ quaternion: smoothed.quaternion });
+              } else {
+                gestureLabel = pose.handCount === 2 ? 'FORCE-2' : 'FORCE-1';
+                scene.setPose(smoothed);
+              }
+            } else {
+              rotationAccum.onInactive();
+              gestureLabel = frozen ? 'FROZEN' : 'IDLE';
+            }
           }
         }
       }

@@ -454,6 +454,15 @@ export class Scene {
     return this._sculptRedoStack.length;
   }
 
+  // Rotate the mesh around the WORLD Y axis by `angle` radians.
+  // Uses quaternion premultiply so world-Y rotation applies before the mesh's
+  // local orientation — this gives the "turntable" feel Eddie asked for.
+  rotateAroundWorldY(angle) {
+    if (!this.mesh) return;
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+    this.mesh.quaternion.premultiply(q);
+  }
+
   resize() {
     const w = this.canvas.clientWidth || 1;
     const h = this.canvas.clientHeight || 1;
