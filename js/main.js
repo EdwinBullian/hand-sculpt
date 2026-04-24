@@ -11,6 +11,7 @@ import { FourFingerPinchStretch } from './gestures/fourFingerPinchStretch.js';
 import { FingerCountHold } from './gestures/fingerCountHold.js';
 import { BothBacksReset } from './gestures/bothBacksReset.js';
 import { SnapFreeze } from './gestures/snapFreeze.js';
+import { VertexSculpt } from './gestures/vertexSculpt.js';
 import { RotationAccumulator } from './rotationAccumulator.js';
 
 const videoEl = document.getElementById('webcam');
@@ -30,6 +31,7 @@ const stretch = new FourFingerPinchStretch();
 const fingerHold = new FingerCountHold(45, 0.04);
 const bothBacks = new BothBacksReset();
 const snapFreeze = new SnapFreeze();
+const vertexSculpt = new VertexSculpt();
 
 const SHAPES_BY_COUNT = [null, 'sphere', 'cube', 'pyramid', 'cylinder', 'torus'];
 
@@ -66,6 +68,28 @@ function resetAll() {
   scene.reset();
 }
 
+// Returns true if sculpt claimed the frame (either started or continued).
+// Also handles release: if the user was sculpting and has let go, we stop
+// the sculpt here before returning false so later gesture branches run
+// cleanly.
+function tryHandleSculpt(results) {
+  const sc = vertexSculpt.detect(results);
+  if (scene.isSculpting) {
+    if (sc.active) {
+      scene.updateSculpt(sc.worldPoint);
+      return true;
+    }
+    scene.stopSculpt();
+    return false;
+  }
+  if (sc.active && scene.startSculpt(sc.worldPoint)) {
+    // Rotation should NOT accumulate while sculpting — release any prior grip.
+    rotationAccum.onInactive();
+    return true;
+  }
+  return false;
+}
+
 function tick() {
   if (!running) return;
   const t = performance.now();
@@ -91,6 +115,8 @@ function tick() {
     gestureLabel = 'RESET';
     resetAll();
     frozen = false;
+  } else if (tryHandleSculpt(results)) {
+    gestureLabel = 'SCULPT';
   } else {
     const scaleNow = currentMeshScale();
     // Scale gestures run whether frozen or not — freeze only blocks Force.
