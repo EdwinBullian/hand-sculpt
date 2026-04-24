@@ -110,3 +110,19 @@ test('does not fire for 0 or >5 fingers', () => {
     assert.equal(g.detect(resultsOneHand(fist)).fired, null);
   }
 });
+
+test('motion stability: counter resets when palm moves too much during hold', () => {
+  const g = new FingerCountHold(3, 0.05);
+  const lm = palmDownRightHand([false, true, true, false, false]);
+  // First frame — count recorded, baseline centroid set.
+  assert.equal(g.detect(resultsOneHand(lm)).fired, null);
+  // Second frame — same landmarks, still counting.
+  assert.equal(g.detect(resultsOneHand(lm)).fired, null);
+  // Shift every landmark by 0.2 in x (simulating hand swept across the frame).
+  const shifted = lm.map((p) => ({ x: p.x + 0.2, y: p.y, z: p.z }));
+  // Motion detected → counter resets to 1, fired stays false.
+  assert.equal(g.detect(resultsOneHand(shifted)).fired, null);
+  assert.equal(g.detect(resultsOneHand(shifted)).fired, null);
+  // Need two more frames of stability (counter now 2), then third fires.
+  assert.equal(g.detect(resultsOneHand(shifted)).fired, 2);
+});
