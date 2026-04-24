@@ -316,6 +316,10 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'c' || e.key === 'C') {
     scene.cyclePalette();
     console.log('Palette:', scene.paletteName);
+  } else if (e.key === 'h' || e.key === 'H') {
+    const cs = document.getElementById('cheatsheet');
+    const nowHidden = cs.classList.toggle('hidden');
+    cs.setAttribute('aria-hidden', String(nowHidden));
   } else if (e.key === 'g' || e.key === 'G') {
     scene.toggleBloom().then(on => console.log('Bloom:', on ? 'on' : 'off'));
   } else if (e.key === 's' || e.key === 'S') {

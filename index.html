@@ -25,6 +25,34 @@
     <canvas id="overlay"></canvas>
     <canvas id="scene3d"></canvas>
   </div>
+  <aside id="cheatsheet" class="cheatsheet hidden" aria-hidden="true">
+    <h3>Gestures <span class="sub">priority top → bottom</span></h3>
+    <table>
+      <tr><td>Both hands showing backs</td><td>Reset</td></tr>
+      <tr><td>One hand pinched near surface</td><td>Sculpt</td></tr>
+      <tr><td>Both palms + thumbs touching</td><td>Y-Rotate</td></tr>
+      <tr><td>Both hands 4-finger pinch, pull apart</td><td>Stretch</td></tr>
+      <tr><td>Both hands thumb+index pinched</td><td>Pinch-Scale</td></tr>
+      <tr><td>Both flat palms, push together</td><td>Squish</td></tr>
+      <tr><td>One palm toward camera</td><td>Force (move + rotate)</td></tr>
+      <tr><td>Both palms toward camera</td><td>Force-2</td></tr>
+      <tr><td>Palm-down, N fingers still 1.5 s</td><td>Shape 1–5</td></tr>
+      <tr><td>Thumb + middle snap, 3 frames</td><td>Freeze toggle</td></tr>
+    </table>
+    <h3>Keys</h3>
+    <table class="keys">
+      <tr><td><kbd>Z</kbd></td><td>Undo sculpt</td></tr>
+      <tr><td><kbd>Y</kbd></td><td>Redo sculpt</td></tr>
+      <tr><td><kbd>M</kbd></td><td>Mirror axis — off / X / Y / Z</td></tr>
+      <tr><td><kbd>B</kbd></td><td>Brush — drag / smooth</td></tr>
+      <tr><td><kbd>I</kbd></td><td>Inflate — inflate / deflate / off</td></tr>
+      <tr><td><kbd>C</kbd></td><td>Cycle color palette</td></tr>
+      <tr><td><kbd>G</kbd></td><td>Toggle bloom glow</td></tr>
+      <tr><td><kbd>S</kbd></td><td>Toggle skeleton overlay</td></tr>
+      <tr><td><kbd>H</kbd></td><td>Toggle this panel</td></tr>
+      <tr><td><kbd>`</kbd></td><td>Toggle settings panel</td></tr>
+    </table>
+  </aside>
   <aside id="settings" class="settings hidden" aria-hidden="true">
     <h3>Settings</h3>
     <label>Smoother &alpha;
