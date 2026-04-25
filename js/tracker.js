@@ -12,7 +12,7 @@ const STICKY_FRAMES = 8; // ~133ms at 60fps
 export class Tracker {
   constructor() {
     this.landmarker = null;
-    this.lastResults = { landmarks: [], handedness: [] };
+    this.lastResults = { landmarks: [], worldLandmarks: [], handedness: [] };
     this._stickyCount = 0;
   }
 
@@ -41,6 +41,7 @@ export class Tracker {
     const r = this.landmarker.detectForVideo(videoEl, timestampMs);
     const fresh = {
       landmarks: r.landmarks || [],
+      worldLandmarks: r.worldLandmarks || [],
       handedness: r.handedness || [],
     };
     if (fresh.landmarks.length === 0 && this.lastResults.landmarks.length > 0) {
