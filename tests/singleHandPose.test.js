@@ -75,14 +75,14 @@ test('detect — no hands → inactive, handCount 0', () => {
   assert.equal(r.handCount, 0);
 });
 
-test('detect — two hands both palms-down → inactive (reset handled elsewhere)', () => {
+test('detect — two hands both palms-down → active (no palm-facing requirement)', () => {
   const g = new SingleHandPose();
   const r = g.detect(results(
     { lm: RIGHT_HAND_PALM_IN, side: 'Right' },
     { lm: LEFT_HAND_PALM_IN, side: 'Left' },
   ));
-  assert.equal(r.active, false);
-  assert.equal(r.handCount, 0);
+  assert.equal(r.active, true);
+  assert.equal(r.handCount, 2);
 });
 
 test('detect — single palm-up hand → active, handCount 1, position + quaternion present', () => {
@@ -97,14 +97,14 @@ test('detect — single palm-up hand → active, handCount 1, position + quatern
   assert.ok(Math.abs(len - 1) < 1e-5, `expected unit quaternion, got length ${len}`);
 });
 
-test('detect — two hands, only one palm-up → active (handCount 1, tracks the up hand)', () => {
+test('detect — two hands, mixed orientation → active with both hands (handCount 2)', () => {
   const g = new SingleHandPose();
   const r = g.detect(results(
     { lm: RIGHT_HAND_PALM_OUT, side: 'Right' },
     { lm: LEFT_HAND_PALM_IN, side: 'Left' },
   ));
   assert.equal(r.active, true);
-  assert.equal(r.handCount, 1);
+  assert.equal(r.handCount, 2);
 });
 
 test('detect — two hands, both palms-up → active with midpoint position, handCount 2', () => {
@@ -123,9 +123,9 @@ test('detect — two hands, both palms-up → active with midpoint position, han
   assert.ok(Math.abs(len - 1) < 1e-5, `expected unit quaternion, got length ${len}`);
 });
 
-test('detect — single palm-down hand → inactive', () => {
+test('detect — single palm-down hand → active (any orientation tracked)', () => {
   const g = new SingleHandPose();
   const r = g.detect(results({ lm: RIGHT_HAND_PALM_IN, side: 'Right' }));
-  assert.equal(r.active, false);
-  assert.equal(r.handCount, 0);
+  assert.equal(r.active, true);
+  assert.equal(r.handCount, 1);
 });
