@@ -38,3 +38,26 @@ export function createShape(name) {
 }
 
 export const SHAPE_NAMES = ['sphere', 'cube', 'pyramid', 'cylinder', 'torus'];
+
+// Low-poly counterpart of `createShape`, used as the wireframe overlay.
+// Returns the same primitive at the same dimensions but with little or no
+// subdivision, so `wireframe: true` rendering shows a CLEAN outline (no
+// triangulation diagonals on the cube/pyramid/cylinder, no dense lat/long
+// grid on the sphere/torus). Drawn as a child of the subdivided fill so it
+// inherits all transforms.
+export function createWireGeom(name) {
+  switch (name) {
+    case 'sphere':
+      return new THREE.SphereGeometry(1, 16, 10);
+    case 'cube':
+      return new THREE.BoxGeometry(1.5, 1.5, 1.5);
+    case 'pyramid':
+      return new THREE.ConeGeometry(1, 1.8, 4, 1);
+    case 'cylinder':
+      return new THREE.CylinderGeometry(1, 1, 1.8, 16, 1);
+    case 'torus':
+      return new THREE.TorusGeometry(1, 0.4, 8, 24);
+    default:
+      return null;
+  }
+}

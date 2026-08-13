@@ -14,6 +14,9 @@ import { VertexSculpt } from './gestures/vertexSculpt.js';
 import { RotationAccumulator } from './rotationAccumulator.js';
 import { nextMirrorAxis } from './mirror.js';
 import { TwoHandYRotation } from './gestures/twoHandYRotation.js';
+import { BothBacksReset } from './gestures/bothBacksReset.js';
+import { PingPong } from './modes/pingpong.js';
+import { Basketball } from './modes/basketball.js';
 
 const videoEl = document.getElementById('webcam');
 const overlayCanvas = document.getElementById('overlay');
@@ -35,6 +38,20 @@ const fingerHold = new FingerCountHold(45, 0.04);
 const snapFreeze = new SnapFreeze();
 const vertexSculpt = new VertexSculpt();
 const twoHandY = new TwoHandYRotation();
+const bothBacksReset = new BothBacksReset();
+// Edge-trigger so the reset gesture only fires once per pose, not every frame
+// while the user is holding both backs toward the camera.
+let bothBacksWasActive = false;
+// Sculpt is shelved by default — Eddie found it produced sharp/awkward results
+// during the 2026-05-04 live test. Toggle from the settings panel to re-enable.
+let sculptEnabled = false;
+
+// Top-level mode. 'sandbox' is the original gesture/shape playground;
+// 'pingpong' / 'basketball' replace it with a physics-based mini-game.
+// Each non-sandbox mode owns its own meshes and state — see js/modes/.
+let currentMode = 'sandbox';
+let pingPong = null;
+let basketball = null;
 
 const SHAPES_BY_COUNT = [null, 'sphere', 'cube', 'pyramid', 'cylinder', 'torus'];
 
@@ -114,6 +131,23 @@ function tick() {
   overlay.drawVideo(videoEl);
   overlay.drawHands(results.landmarks);
 
+  // Mode dispatch: non-sandbox modes own their own physics + meshes; the
+  // existing sandbox-mode gesture chain only runs in 'sandbox' mode.
+  if (currentMode === 'pingpong' && pingPong) {
+    const status = pingPong.tick(results, t);
+    updateGameHud('PING PONG', formatPingPongStatus(status), Math.round(fpsEMA));
+    scene.render();
+    requestAnimationFrame(tick);
+    return;
+  }
+  if (currentMode === 'basketball' && basketball) {
+    const status = basketball.tick(results, t);
+    updateGameHud('BASKETBALL', formatBasketballStatus(status), Math.round(fpsEMA));
+    scene.render();
+    requestAnimationFrame(tick);
+    return;
+  }
+
   const leftHands = landmarksByHand(results, 'Left');
   const rightHands = landmarksByHand(results, 'Right');
   const leftFingers = leftHands.reduce((n, lm) => n + countExtendedFingers(lm), 0);
@@ -124,9 +158,21 @@ function tick() {
   const snap = snapFreeze.detect(results);
   if (snap.toggle) frozen = !frozen;
 
+  // Both-backs-of-palms reset. Highest priority — clobbers everything else.
+  // Edge-triggered so the user gets a single reset per gesture, not a constant
+  // re-snap while they hold the pose.
+  const bb = bothBacksReset.detect(results);
+  if (bb.active && !bothBacksWasActive) {
+    frozen = false;
+    resetAll();
+  }
+  bothBacksWasActive = bb.active;
+
   let gestureLabel;
 
-  if (tryHandleSculpt(results)) {
+  if (bb.active) {
+    gestureLabel = 'RESET';
+  } else if (sculptEnabled && tryHandleSculpt(results)) {
     gestureLabel = 'SCULPT';
   } else {
     const scaleNow = currentMeshScale();
@@ -244,6 +290,88 @@ document.getElementById('stop').addEventListener('click', stop);
 document.getElementById('reset').addEventListener('click', reset);
 window.addEventListener('resize', syncCanvasSizes);
 
+// ---------- Mode switcher ----------
+// Each top-level mode is fully separate: switching teardown's the prior
+// mode's meshes and rebuilds the new one's. The sandbox shape stays in the
+// scene but is hidden during games so it doesn't occlude play.
+function switchMode(nextMode) {
+  if (currentMode === nextMode) return;
+  // Teardown current mode's resources.
+  if (currentMode === 'pingpong' && pingPong) {
+    pingPong.teardown(scene.scene);
+    pingPong = null;
+  }
+  if (currentMode === 'basketball' && basketball) {
+    basketball.teardown(scene.scene);
+    basketball = null;
+  }
+  currentMode = nextMode;
+  // Hide the sandbox shape during games; show it in sandbox mode.
+  if (scene.mesh) scene.mesh.visible = (nextMode === 'sandbox');
+  // Build new mode's resources.
+  if (nextMode === 'pingpong') {
+    pingPong = new PingPong();
+    pingPong.init(scene.scene);
+  } else if (nextMode === 'basketball') {
+    basketball = new Basketball();
+    basketball.init(scene.scene);
+  }
+  // Toggle the game HUD visibility — sandbox uses the canvas-overlay HUD,
+  // games use a separate DOM HUD that stays still even when the canvas
+  // re-renders mid-tick.
+  document.getElementById('game-hud').classList.toggle('hidden', nextMode === 'sandbox');
+  // Update the active state on the mode buttons.
+  for (const btn of document.querySelectorAll('[data-mode]')) {
+    btn.classList.toggle('active', btn.dataset.mode === nextMode);
+  }
+}
+function updateGameHud(modeLabel, scoreText, fps) {
+  const label = document.getElementById('game-mode-label');
+  const score = document.getElementById('game-score');
+  const fpsEl = document.getElementById('game-fps');
+  if (label) label.textContent = modeLabel;
+  if (score) score.textContent = scoreText;
+  if (fpsEl) fpsEl.textContent = `${fps} fps`;
+}
+function formatPingPongStatus(status) {
+  if (status.missing) return 'MISS — respawning';
+  if (!status.paddleVisible) return 'Show your hand to play';
+  return `Score: ${status.score}    Best: ${status.best}`;
+}
+function formatBasketballStatus(status) {
+  if (status.state === 'scored') return `SCORE!    ${status.score}/${status.attempts}    streak ${status.streak}`;
+  if (status.state === 'missed') return `Miss    ${status.score}/${status.attempts}    best streak ${status.bestStreak}`;
+  if (status.state === 'in_flight') return `Shot in flight…    ${status.score}/${status.attempts}    streak ${status.streak}`;
+  // 'held'
+  if (!status.grabbed) return `Pinch ONE hand to grab — point + flick to shoot`;
+  return `Aim with index finger, flick + release    ${status.score}/${status.attempts}    streak ${status.streak}`;
+}
+for (const btn of document.querySelectorAll('[data-mode]')) {
+  btn.addEventListener('click', () => switchMode(btn.dataset.mode));
+}
+
+// Settings + cheatsheet toggle buttons (mirror the ` and H keyboard shortcuts so
+// they're discoverable by mouse too).
+document.getElementById('settings-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('settings');
+  const nowHidden = panel.classList.toggle('hidden');
+  panel.setAttribute('aria-hidden', String(nowHidden));
+});
+document.getElementById('cheatsheet-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('cheatsheet');
+  const nowHidden = panel.classList.toggle('hidden');
+  panel.setAttribute('aria-hidden', String(nowHidden));
+});
+
+// Sculpt enable/disable. When toggled OFF mid-stroke, abort the in-flight
+// stroke so the next re-enable starts cleanly.
+const sculptEnabledInput = document.getElementById('s-sculpt-enabled');
+sculptEnabledInput.checked = sculptEnabled;
+sculptEnabledInput.addEventListener('change', () => {
+  sculptEnabled = sculptEnabledInput.checked;
+  if (!sculptEnabled && scene.isSculpting) scene.stopSculpt();
+});
+
 // ---------- Settings panel ----------
 // Each slider writes directly into the module or scene field that drives the
 // behavior — no intermediate state. Backtick toggles the panel's visibility.
@@ -326,6 +454,19 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === '`' || e.key === '~') {
     const nowHidden = settingsPanel.classList.toggle('hidden');
     settingsPanel.setAttribute('aria-hidden', String(nowHidden));
+  } else if (['1','2','3','4','5'].includes(e.key)) {
+    // Direct shape-swap shortcuts. Mirror the gesture mapping (1=sphere,
+    // 2=cube, 3=pyramid, 4=cylinder, 5=torus). Reliable fallback for the
+    // gesture detector, which can mis-fire during natural rotation.
+    const shapeName = SHAPES_BY_COUNT[parseInt(e.key, 10)];
+    if (shapeName) {
+      scene.setShape(shapeName);
+      smoother.reset();
+      pinchScale.reset();
+      squish.reset();
+      stretch.reset();
+      rotationAccum.reset();
+    }
   }
 });
 

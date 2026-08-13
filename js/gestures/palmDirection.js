@@ -38,3 +38,13 @@ export function palmFacesCamera(landmarks, isLeftHand) {
   const n = palmNormal(landmarks, isLeftHand);
   return n.z < 0;
 }
+
+// Returns the z component of the (signed, normalized) palm normal.
+// > 0 means palm points AWAY from camera (back of hand toward camera);
+// < 0 means palm points TOWARD camera. Magnitude near 1 means strongly aligned;
+// magnitude near 0 means the palm is sideways. Useful for stricter gates that
+// only fire on a clearly-aligned pose, not mid-rotation.
+export function palmZ(landmarks, isLeftHand) {
+  if (!landmarks || landmarks.length < 21) return 0;
+  return palmNormal(landmarks, isLeftHand).z;
+}

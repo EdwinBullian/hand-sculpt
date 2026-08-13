@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>hand-sculpt</title>
-  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/main.css?v=20260504f" />
   <script type="importmap">
     {
       "imports": {
@@ -19,6 +19,17 @@
     <button id="start">Start Camera</button>
     <button id="stop">Stop</button>
     <button id="reset">Reset</button>
+    <button id="settings-toggle" title="Toggle settings panel (`)" aria-label="Toggle settings">⚙ Settings</button>
+    <button id="cheatsheet-toggle" title="Toggle cheat sheet (H)" aria-label="Toggle cheat sheet">? Help</button>
+    <span class="mode-divider"></span>
+    <button data-mode="sandbox" class="mode-btn active">Sandbox</button>
+    <button data-mode="pingpong" class="mode-btn">Ping Pong</button>
+    <button data-mode="basketball" class="mode-btn">Basketball</button>
+  </div>
+  <div id="game-hud" class="game-hud hidden">
+    <span id="game-mode-label">PING PONG</span>
+    <span id="game-score">—</span>
+    <span id="game-fps">— fps</span>
   </div>
   <div class="stage">
     <video id="webcam" autoplay playsinline muted></video>
@@ -35,7 +46,7 @@
       <tr><td>Both flat palms, push together</td><td>Squish</td></tr>
       <tr><td>One palm toward camera</td><td>Force (move + rotate)</td></tr>
       <tr><td>Both palms toward camera</td><td>Force-2</td></tr>
-      <tr><td>Palm-down, N fingers still 1.5 s</td><td>Shape 1–5</td></tr>
+      <tr><td>Back of hand toward camera, N fingers still 1.5 s</td><td>Shape 1–5 (gesture)</td></tr>
       <tr><td>Thumb + middle snap, 3 frames</td><td>Freeze toggle</td></tr>
     </table>
     <h3>Keys</h3>
@@ -50,10 +61,15 @@
       <tr><td><kbd>S</kbd></td><td>Toggle skeleton overlay</td></tr>
       <tr><td><kbd>H</kbd></td><td>Toggle this panel</td></tr>
       <tr><td><kbd>`</kbd></td><td>Toggle settings panel</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>5</kbd></td><td>Shape: sphere / cube / pyramid / cylinder / torus</td></tr>
     </table>
   </aside>
   <aside id="settings" class="settings hidden" aria-hidden="true">
     <h3>Settings</h3>
+    <label class="checkbox-row">
+      <input id="s-sculpt-enabled" type="checkbox" />
+      <span>Enable vertex sculpt</span>
+    </label>
     <label>Responsiveness
       <input id="s-alpha" type="range" min="0.05" max="0.60" step="0.01" value="0.15" />
       <output id="v-alpha">0.15</output>
@@ -81,6 +97,6 @@
     <button id="s-reset" type="button">Reset to defaults</button>
     <small>Press <kbd>`</kbd> to toggle</small>
   </aside>
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/main.js?v=20260504f"></script>
 </body>
 </html>

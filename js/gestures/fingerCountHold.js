@@ -1,5 +1,5 @@
 import { countExtendedFingers } from '../fingers.js';
-import { palmFacesCamera } from './palmDirection.js';
+import { palmZ } from './palmDirection.js';
 import { palmCentroid } from './singleHandPose.js';
 
 // Fires once when a single palm-DOWN hand holds 1..5 extended fingers for
@@ -7,11 +7,21 @@ import { palmCentroid } from './singleHandPose.js';
 // `motionThreshold` (normalized coords) of its position when the hold began.
 // Palm-DOWN + motion stability prevent accidental fires during natural hand
 // motion (e.g. an open hand sweeping across the frame during Force).
+//
+// Gate: palmZ > PALM_AWAY_THRESHOLD — palm normal must point STRONGLY away
+// from camera (default 0.5). The old gate of `palmFacesCamera == false`
+// (n.z >= 0) fired any time the palm wasn't directly facing the camera, which
+// included mid-rotation poses during the Force gesture. Tightening this to
+// 0.5 means the back of the hand has to be deliberately presented (~60° off
+// camera-facing) before a count can fire.
+
+const DEFAULT_PALM_AWAY_THRESHOLD = 0.5;
 
 export class FingerCountHold {
-  constructor(holdFrames = 30, motionThreshold = 0.05) {
+  constructor(holdFrames = 30, motionThreshold = 0.05, palmAwayThreshold = DEFAULT_PALM_AWAY_THRESHOLD) {
     this.holdFrames = holdFrames;
     this.motionThreshold = motionThreshold;
+    this.palmAwayThreshold = palmAwayThreshold;
     this.currentCount = -1;
     this.counter = 0;
     this.fired = false;
@@ -30,7 +40,7 @@ export class FingerCountHold {
       return { fired: null };
     }
     const isLeft = side === 'Left';
-    if (palmFacesCamera(lm, isLeft)) {
+    if (palmZ(lm, isLeft) < this.palmAwayThreshold) {
       this._reset();
       return { fired: null };
     }

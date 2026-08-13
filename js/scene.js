@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createShape } from './shapes.js';
+import { createShape, createWireGeom } from './shapes.js';
 import { mirrorPoint, mirrorDeltaSign } from './mirror.js';
 import { brushIndicesInRegion, smoothStep } from './smooth.js';
 import { inflateStep } from './inflate.js';
@@ -105,9 +105,17 @@ export class Scene {
       if (this._geom) this._geom.dispose();
       if (this._fillMat) this._fillMat.dispose();
       if (this._wireMat) this._wireMat.dispose();
+      if (this._wireGeom) this._wireGeom.dispose();
     }
     applyVertexGradient(geom, PALETTES[this.paletteIndex]);
     const fillMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.FrontSide });
+    // Wireframe uses a separate LOW-POLY geometry of the same primitive (no
+    // subdivision), rendered with `wireframe: true`. This gives a clean outline
+    // — 12 edges on a cube, 8 on the pyramid, top/bottom rings on the cylinder
+    // — without the triangulation diagonals you'd see if we wireframed the
+    // subdivided fill geometry. Wire is a child of fill so it inherits all
+    // transforms (position/rotation/scale) automatically.
+    const wireGeom = createWireGeom(name);
     const wireMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       wireframe: true,
@@ -115,12 +123,13 @@ export class Scene {
       opacity: 0.75,
     });
     const fill = new THREE.Mesh(geom, fillMat);
-    const wire = new THREE.Mesh(geom, wireMat);
+    const wire = new THREE.Mesh(wireGeom, wireMat);
     fill.add(wire);
     this.mesh = fill;
     this._fillMat = fillMat;
     this._wireMat = wireMat;
     this._geom = geom;
+    this._wireGeom = wireGeom;
     this.scene.add(this.mesh);
     this.currentShapeName = name;
   }
@@ -136,11 +145,12 @@ export class Scene {
     const newFillMat = new THREE.MeshBasicMaterial({
       vertexColors: true, side: THREE.FrontSide, transparent: true, opacity: 0,
     });
+    const newWireGeom = createWireGeom(name);
     const newWireMat = new THREE.MeshBasicMaterial({
       color: 0xffffff, wireframe: true, transparent: true, opacity: 0,
     });
     const newFill = new THREE.Mesh(geom, newFillMat);
-    newFill.add(new THREE.Mesh(geom, newWireMat));
+    newFill.add(new THREE.Mesh(newWireGeom, newWireMat));
     if (this.mesh) {
       newFill.position.copy(this.mesh.position);
       newFill.quaternion.copy(this.mesh.quaternion);
@@ -152,17 +162,19 @@ export class Scene {
     const oldFillMat = this._fillMat;
     const oldWireMat = this._wireMat;
     const oldGeom = this._geom;
+    const oldWireGeom = this._wireGeom;
     this.mesh = newFill;
     this._fillMat = newFillMat;
     this._wireMat = newWireMat;
     this._geom = geom;
+    this._wireGeom = newWireGeom;
     this.currentShapeName = name;
-    this._shapeAnim = { oldMesh, oldFillMat, oldWireMat, oldGeom, startT: performance.now(), dur: 350 };
+    this._shapeAnim = { oldMesh, oldFillMat, oldWireMat, oldGeom, oldWireGeom, startT: performance.now(), dur: 350 };
   }
 
   _tickShapeAnim() {
     if (!this._shapeAnim) return;
-    const { oldMesh, oldFillMat, oldWireMat, oldGeom, startT, dur } = this._shapeAnim;
+    const { oldMesh, oldFillMat, oldWireMat, oldGeom, oldWireGeom, startT, dur } = this._shapeAnim;
     const t = Math.min(1, (performance.now() - startT) / dur);
     const eased = 1 - Math.pow(1 - t, 2);
     if (oldMesh) {
@@ -177,6 +189,7 @@ export class Scene {
         oldGeom.dispose();
         oldFillMat.dispose();
         oldWireMat.dispose();
+        if (oldWireGeom) oldWireGeom.dispose();
       }
       this._fillMat.transparent = false;
       this._fillMat.opacity = 1;
@@ -198,11 +211,21 @@ export class Scene {
     this.mesh.scale.set(scale.x, scale.y, scale.z);
   }
 
-  // Restore: fresh geometry + identity transform. Undoes any sculpting.
+  // Restore: fresh geometry + identity transform. Undoes any sculpting,
+  // squishing, stretching, rotation, and translation. Belt-and-suspenders —
+  // _doSetShape already builds a new Mesh with identity transforms by default,
+  // but the explicit set is a defensive guard against subtle ordering bugs in
+  // the gesture pipeline (e.g. a stretch detection that fires the same frame
+  // as a reset and re-applies scale before the new mesh hits the screen).
   reset() {
     this._shapeAnim = null;
     this.stopSculpt();
     this._doSetShape(this.currentShapeName);
+    if (this.mesh) {
+      this.mesh.position.set(0, 0, 0);
+      this.mesh.quaternion.set(0, 0, 0, 1);
+      this.mesh.scale.set(1, 1, 1);
+    }
   }
 
   setMirrorAxis(axis) {
@@ -226,6 +249,13 @@ export class Scene {
     }
     return this.paletteIndex;
   }
+
+  // No-op kept for backwards compatibility with the sculpt update paths that
+  // still reference it. With the low-poly wire geometry approach, the wireframe
+  // doesn't track sculpt deformations — the original silhouette stays as a
+  // reference and the sculpted fill diverges from it. Acceptable since sculpt
+  // is shelved by default; revisit if/when sculpt is the headline feature.
+  _refreshEdges() {}
 
   get paletteName() {
     return PALETTES[this.paletteIndex].name;
@@ -310,7 +340,12 @@ export class Scene {
         const dz = pos.getZ(i) - center.z;
         const d = Math.hypot(dx, dy, dz);
         if (d < this.sculptFalloffRadius) {
-          const w = 1 - d / this.sculptFalloffRadius;
+          // Smoothstep falloff: w = t*t*(3-2t) where t = 1 - d/r. Gives a
+          // soft cubic taper instead of a linear one — vertices near the
+          // center share the deformation more smoothly with their
+          // neighbors, so sculpts look rounded rather than spiky.
+          const t = 1 - d / this.sculptFalloffRadius;
+          const w = t * t * (3 - 2 * t);
           let entry = this._sculptOriginals.get(i);
           if (!entry) {
             entry = {
@@ -402,6 +437,7 @@ export class Scene {
     // Keep the gradient in sync: vertex colors are cheap to recompute and the
     // top/bottom of the shape can shift noticeably during sculpting.
     applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
+    this._refreshEdges();
   }
 
   _updateSmooth(worldPoint) {
@@ -425,6 +461,7 @@ export class Scene {
     }
     pos.needsUpdate = true;
     applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
+    this._refreshEdges();
   }
 
   // Inflate/deflate: push vertices along their surface normals each frame.
@@ -474,6 +511,7 @@ export class Scene {
     }
     pos.needsUpdate = true;
     applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
+    this._refreshEdges();
   }
 
   stopSculpt() {
@@ -494,6 +532,7 @@ export class Scene {
     pos.array.set(snapshot);
     pos.needsUpdate = true;
     applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
+    this._refreshEdges();
     this.stopSculpt();
     this.render();
     return true;
@@ -508,6 +547,7 @@ export class Scene {
     pos.array.set(snapshot);
     pos.needsUpdate = true;
     applyVertexGradient(this._geom, PALETTES[this.paletteIndex]);
+    this._refreshEdges();
     this.stopSculpt();
     this.render();
     return true;
